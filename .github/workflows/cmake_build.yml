@@ -98,7 +98,7 @@ jobs:
     #    7z e "${{runner.workspace}}\ffmpeg.7z" -o${{runner.workspace}}\ffmpeg
     #    cp "${{runner.workspace}}\ffmpeg\ffmpeg.exe" "${{runner.workspace}}\OFS\bin\Release\ffmpeg.exe"
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: OFS-64x_${{github.sha}}.zip
         path: ${{runner.workspace}}\OFS\bin\Release\*
