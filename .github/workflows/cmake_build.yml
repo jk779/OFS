@@ -35,6 +35,29 @@ jobs:
       run: |
         cmake --build . --config $BUILD_TYPE --target "OpenFunscripter"
 
+
+    - name: Create App Archive
+      working-directory: ${{github.workspace}}/bin
+      run: |
+        zip -r OpenFunscripter-macOS.zip OpenFunscripter.app
+
+    - name: Create Release
+      uses: ncipollo/release-action@v1
+      with:
+        tag: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        generateReleaseNotes: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+        artifacts: "${{github.workspace}}/bin/OpenFunscripter-macOS.zip"
+
+
+
+
+    # - uses: actions/upload-artifact@v4
+    #   with:
+    #     name: OFS-MacOS-x64_${{github.sha}}.zip
+    #     path: ${{runner.workspace}}\OFS\bin\*
+    #     retention-days: 14
   # linux:
   #   runs-on: ubuntu-20.04
 
