@@ -27,7 +27,7 @@ jobs:
     - name: Configure CMake
       shell: bash
       working-directory: ${{runner.workspace}}/build
-      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_C_STANDARD=99 -DCMAKE_C_FLAGS="-std=c99"
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_C_STANDARD=99 -DCMAKE_C_FLAGS="-std=c99 -Wno-declaration-after-statement"
 
     - name: Build OFS
       working-directory: ${{runner.workspace}}/build
