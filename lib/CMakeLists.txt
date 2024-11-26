@@ -1,3 +1,6 @@
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
 # ============
 # == OPENGL ==
 # ============
@@ -25,7 +28,7 @@ add_subdirectory("bitsery/")
 # ==========
 # == LUA ===
 # ==========
-set (LUA_SOURCES 
+set (LUA_SOURCES
 	"lua/lauxlib.c"
 	"lua/lbaselib.c"
 	"lua/ltablib.c"
@@ -61,7 +64,7 @@ set (LUA_SOURCES
 	"lua/lparser.c"
 	"lua/lcode.c"
 )
-set (LUA_HEADERS 
+set (LUA_HEADERS
 	"lua/lua.h"
 	"lua/lauxlib.h"
 	"lua/lualib.h"
@@ -111,7 +114,7 @@ add_subdirectory("SDL2/")
 
 
 # ===================
-# = tinifiledialogs = 
+# = tinifiledialogs =
 # ===================
 set(tiny_SRC "tinyfiledialogs/tinyfiledialogs.c")
 set(tiny_HEADER "tinyfiledialogs/tinyfiledialogs.h")
@@ -156,7 +159,7 @@ target_include_directories(eventpp INTERFACE "eventpp/include/")
 
 
 set (civetweb_SRC
-	"civetweb/src/civetweb.c" 
+	"civetweb/src/civetweb.c"
 )
 set_source_files_properties("civetweb/src/civetweb.c" PROPERTIES LANGUAGE CXX )
 add_library(civetweb STATIC ${civetweb_SRC})
