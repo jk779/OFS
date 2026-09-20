@@ -155,6 +155,7 @@ elseif(APPLE)
 			"/opt/homebrew/include"
 			"/usr/local/include"
 			"${CMAKE_SOURCE_DIR}/lib/libmpv/include"
+		PATH_SUFFIXES include
 	)
 	if (NOT MPV_INCLUDE_DIR)
 		message(FATAL_ERROR "libmpv headers were not found. Set MPV_INCLUDE_DIR or OFS_MPV_ROOT.")
@@ -169,6 +170,7 @@ elseif(APPLE)
 			"/opt/homebrew/opt/mpv/lib"
 			"/usr/local/lib"
 			"/usr/local/opt/mpv/lib"
+		PATH_SUFFIXES lib
 	)
 	if (MPV_LIBRARY)
 		message(STATUS "Found libmpv at ${MPV_LIBRARY}")
