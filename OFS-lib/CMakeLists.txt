@@ -145,11 +145,10 @@ elseif(APPLE)
 	# libmpv is loaded at runtime. The headers are required to compile, while
 	# an optional discovered dylib path is passed to the runtime loader.
 	set(OFS_MPV_ROOT "" CACHE PATH "Root directory of a libmpv installation")
-	set(MPV_INCLUDE_DIR "" CACHE PATH "Directory containing mpv/client.h")
-	set(MPV_LIBRARY "" CACHE FILEPATH "Path to the libmpv dylib")
 
 	find_path(MPV_INCLUDE_DIR
 		NAMES mpv/client.h
+		DOC "Directory containing mpv/client.h"
 		HINTS
 			"${OFS_MPV_ROOT}/include"
 			"/opt/homebrew/include"
@@ -163,6 +162,7 @@ elseif(APPLE)
 
 	find_file(MPV_LIBRARY
 		NAMES libmpv.dylib
+		DOC "Path to the libmpv dylib"
 		HINTS
 			"${OFS_MPV_ROOT}/lib"
 			"${OFS_MPV_ROOT}/opt/mpv/lib"
