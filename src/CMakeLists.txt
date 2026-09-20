@@ -47,11 +47,23 @@ else()
 	add_executable(${PROJECT_NAME} ${OPEN_FUNSCRIPTER_SOURCES})
 endif()
 
+if(APPLE)
+	set_target_properties(${PROJECT_NAME} PROPERTIES
+		MACOSX_BUNDLE_BUNDLE_NAME "OpenFunscripter"
+		MACOSX_BUNDLE_GUI_IDENTIFIER "com.openfunscripter.OFS"
+		MACOSX_BUNDLE_BUNDLE_VERSION "1"
+		MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+		MACOSX_BUNDLE_INFO_STRING "OpenFunscripter funscript editor"
+	)
+endif()
+
 target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR})
 
 # copy data directory
 if(APPLE)
-	add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
+	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+						COMMAND ${CMAKE_COMMAND} -E make_directory
+						"$<TARGET_FILE_DIR:${PROJECT_NAME}>/../Resources"
 						COMMAND ${CMAKE_COMMAND} -E copy_directory
 						"${CMAKE_SOURCE_DIR}/data/" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/../Resources/data")
 else()

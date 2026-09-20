@@ -13,6 +13,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <shellapi.h>
+#elif defined(__APPLE__)
+#include "OFS_MacOS.h"
 #endif
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -69,10 +71,9 @@ int Util::OpenFileExplorer(const std::string& str)
     auto params = ss.str();
     return WindowsShellExecute(nullptr, L"explorer", params.c_str());
 #elif defined(__APPLE__)
-    LOG_ERROR("Not implemented for this platform.");
-    return 1;
+	return OFS_MacOS::RevealInFinder(str) ? 1 : 0;
 #else
-    return OpenUrl(str);
+	return OpenUrl(str);
 #endif
 }
 
@@ -85,8 +86,7 @@ int Util::OpenUrl(const std::string& url)
     auto params = ss.str();
     return WindowsShellExecute(L"open", params.c_str(), NULL);
 #elif defined(__APPLE__)
-    LOG_ERROR("Not implemented for this platform.");
-    return 1;
+	return OFS_MacOS::OpenURL(url) ? 1 : 0;
 #else
     char tmp[1024];
     stbsp_snprintf(tmp, sizeof(tmp), "xdg-open \"%s\"", url.c_str());
@@ -313,9 +313,16 @@ void Util::MessageBoxAlert(const std::string& title, const std::string& message)
 
 std::string Util::Resource(const std::string& path) noexcept
 {
-    auto base = Util::Basepath() / L"data" / Util::Utf8ToUtf16(path);
-    base.make_preferred();
-    return base.u8string();
+	auto base = Util::Basepath();
+#if defined(__APPLE__)
+	// SDL_GetBasePath points at Contents/MacOS for a bundled application.
+	base = base.parent_path() / L"Resources" / L"data";
+#else
+	base /= L"data";
+#endif
+	base /= Util::Utf8ToUtf16(path);
+	base.make_preferred();
+	return base.u8string();
 }
 
 std::wstring Util::Utf8ToUtf16(const std::string& str) noexcept

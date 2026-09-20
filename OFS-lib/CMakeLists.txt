@@ -48,6 +48,10 @@ set(OFS_LIB_SOURCES
 	"localization/OFS_Localization.cpp"
 )
 
+if(APPLE)
+	list(APPEND OFS_LIB_SOURCES "OFS_MacOS.mm")
+endif()
+
 add_library(${PROJECT_NAME} STATIC ${OFS_LIB_SOURCES})
 target_include_directories(${PROJECT_NAME} PUBLIC
 	"${PROJECT_SOURCE_DIR}/event/"
@@ -138,18 +142,46 @@ elseif(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
 	# instead libmpv.so.1 is loaded at runtime
 	# this avoids linking issues with mpv and lua symbols
 elseif(APPLE)
-	execute_process(
-		COMMAND brew --prefix mpv
-		RESULT_VARIABLE BREW_MPV
-		OUTPUT_VARIABLE BREW_MPV_PREFIX
-		OUTPUT_STRIP_TRAILING_WHITESPACE
+	# libmpv is loaded at runtime. The headers are required to compile, while
+	# an optional discovered dylib path is passed to the runtime loader.
+	set(OFS_MPV_ROOT "" CACHE PATH "Root directory of a libmpv installation")
+	set(MPV_INCLUDE_DIR "" CACHE PATH "Directory containing mpv/client.h")
+	set(MPV_LIBRARY "" CACHE FILEPATH "Path to the libmpv dylib")
+
+	find_path(MPV_INCLUDE_DIR
+		NAMES mpv/client.h
+		HINTS
+			"${OFS_MPV_ROOT}/include"
+			"/opt/homebrew/include"
+			"/usr/local/include"
+			"${CMAKE_SOURCE_DIR}/lib/libmpv/include"
 	)
-	if (BREW_MPV EQUAL 0 AND EXISTS "${BREW_MPV_PREFIX}")
-		message(STATUS "Found mpv installed by Homebrew at ${BREW_MPV_PREFIX}")
-		set(MPV_INCLUDE "${BREW_MPV_PREFIX}/include")
-		set(MPV_LIB "${BREW_MPV_PREFIX}/lib")
+	if (NOT MPV_INCLUDE_DIR)
+		message(FATAL_ERROR "libmpv headers were not found. Set MPV_INCLUDE_DIR or OFS_MPV_ROOT.")
+	endif()
+
+	find_file(MPV_LIBRARY
+		NAMES libmpv.dylib
+		HINTS
+			"${OFS_MPV_ROOT}/lib"
+			"${OFS_MPV_ROOT}/opt/mpv/lib"
+			"/opt/homebrew/lib"
+			"/opt/homebrew/opt/mpv/lib"
+			"/usr/local/lib"
+			"/usr/local/opt/mpv/lib"
+	)
+	if (MPV_LIBRARY)
+		message(STATUS "Found libmpv at ${MPV_LIBRARY}")
+		target_compile_definitions(${PROJECT_NAME} PUBLIC
+			"OFS_MPV_LIBRARY_PATH=\"${MPV_LIBRARY}\""
+		)
+	else()
+		message(STATUS "libmpv dylib not found at configure time; runtime fallback paths will be tried")
 	endif()
 	target_include_directories(${PROJECT_NAME} PUBLIC
-		"${MPV_INCLUDE}"
+		"${MPV_INCLUDE_DIR}"
 	)
+
+	find_library(OFS_APPKIT_FRAMEWORK AppKit REQUIRED)
+	target_link_libraries(${PROJECT_NAME} PUBLIC "${OFS_APPKIT_FRAMEWORK}")
 endif()
