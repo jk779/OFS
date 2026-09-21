@@ -319,10 +319,15 @@ std::string Util::Resource(const std::string& path) noexcept
 	// default, but an SDL_FILESYSTEM_BASE_DIR_TYPE override may return
 	// Contents/MacOS instead. Handle both forms without duplicating Resources.
 	// SDL includes a trailing separator in the returned path. Normalize it
-	// before inspecting the final component; on POSIX, filename() is otherwise
-	// empty. Use UTF-8 path components here because macOS filesystem paths use
+	// before inspecting the final component. Some standard-library
+	// implementations preserve that separator during lexical normalization, so
+	// filename() may still be empty and needs one explicit trailing-component
+	// cleanup. Use UTF-8 path components here because macOS filesystem paths use
 	// char as their native value type.
 	base = base.lexically_normal();
+	if (base.filename().empty()) {
+		base = base.parent_path();
+	}
 	if (base.filename().u8string() == "Resources") {
 		base /= "data";
 	}
