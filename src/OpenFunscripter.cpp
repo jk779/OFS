@@ -1433,6 +1433,7 @@ void OpenFunscripter::DragNDrop(const OFS_SDL_Event* ev) noexcept
 
 void OpenFunscripter::VideoDuration(const DurationChangeEvent* ev) noexcept
 {
+    if (ev->playerType != VideoplayerType::Main) return;
     auto& projectState = LoadedProject->State();
     projectState.metadata.duration = player->Duration();
     player->SetPositionExact(projectState.lastPlayerPosition);

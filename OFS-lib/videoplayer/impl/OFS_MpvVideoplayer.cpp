@@ -60,6 +60,10 @@ struct MpvPlayerContext
     SDL_atomic_t renderUpdate = {0};
     SDL_atomic_t hasEvents = {0};
 
+    bool fileLoadedEventReceived = false;
+    bool framebufferComplete = false;
+    int lastRenderError = 0;
+
     uint32_t* frameTexture = nullptr;
     float* logicalPosition = nullptr;
 
@@ -119,6 +123,9 @@ inline static void notifyPlaybackSpeed(MpvPlayerContext* ctx) noexcept
 
 inline static void updateRenderTexture(MpvPlayerContext* ctx) noexcept
 {
+    GLint previousFramebuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+
     if (!ctx->framebuffer) {
 		glGenFramebuffers(1, &ctx->framebuffer);
 		glBindFramebuffer(GL_FRAMEBUFFER, ctx->framebuffer);
@@ -142,7 +149,9 @@ inline static void updateRenderTexture(MpvPlayerContext* ctx) noexcept
 		GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
 		glDrawBuffers(1, DrawBuffers); 
 
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		const GLenum framebufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		ctx->framebufferComplete = framebufferStatus == GL_FRAMEBUFFER_COMPLETE;
+		if (!ctx->framebufferComplete) {
 			LOG_ERROR("Failed to create framebuffer for video!");
 		}
 	}
@@ -150,7 +159,27 @@ inline static void updateRenderTexture(MpvPlayerContext* ctx) noexcept
 		// update size of render texture based on video resolution
 		glBindTexture(GL_TEXTURE_2D, *ctx->frameTexture);
 		glTexImage2D(GL_TEXTURE_2D, 0, OFS_InternalTexFormat, ctx->data.videoWidth, ctx->data.videoHeight, 0, OFS_TexFormat, GL_UNSIGNED_BYTE, 0);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, ctx->framebuffer);
+		const GLenum framebufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		ctx->framebufferComplete = framebufferStatus == GL_FRAMEBUFFER_COMPLETE;
+		if (!ctx->framebufferComplete) {
+			LOG_ERROR("Failed to resize framebuffer for video!");
+		}
 	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+}
+
+inline static void maybeNotifyVideoLoaded(MpvPlayerContext* ctx) noexcept
+{
+    if (ctx->data.videoLoaded || !ctx->fileLoadedEventReceived || ctx->data.filePath.empty() ||
+        ctx->data.videoWidth <= 0 || ctx->data.videoHeight <= 0 || !ctx->framebufferComplete) {
+        return;
+    }
+
+    ctx->data.videoLoaded = true;
+    notifyVideoLoaded(ctx);
 }
 
 inline static void showText(MpvPlayerContext* ctx, const char* text) noexcept
@@ -303,7 +332,8 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
             }
             case MPV_EVENT_FILE_LOADED:
             {
-                ctx->data.videoLoaded = true; 	
+                ctx->fileLoadedEventReceived = true;
+                maybeNotifyVideoLoaded(ctx);
                 continue;
             }
             case MPV_EVENT_PROPERTY_CHANGE:
@@ -321,7 +351,7 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
                         ctx->data.videoWidth = *(int64_t*)prop->data;
                         if (ctx->data.videoHeight > 0.f) {
                             updateRenderTexture(ctx);
-                            ctx->data.videoLoaded = true;
+                            maybeNotifyVideoLoaded(ctx);
                         }
                         break;
                     }
@@ -330,7 +360,7 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
                         ctx->data.videoHeight = *(int64_t*)prop->data;
                         if (ctx->data.videoWidth > 0.f) {
                             updateRenderTexture(ctx);
-                            ctx->data.videoLoaded = true;
+                            maybeNotifyVideoLoaded(ctx);
                         }
                         break;
                     }
@@ -374,9 +404,21 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
                         break;
                     }
                     case MpvFilePath:
-                        ctx->data.filePath = *((const char**)(prop->data));
-                        notifyVideoLoaded(ctx);
+                    {
+                        const char* path = *((const char**)(prop->data));
+                        ctx->data.filePath = path ? path : "";
+                        if (ctx->data.filePath.empty()) {
+                            ctx->data.videoLoaded = false;
+                            ctx->fileLoadedEventReceived = false;
+                            ctx->framebufferComplete = false;
+                            ctx->data.videoWidth = 0;
+                            ctx->data.videoHeight = 0;
+                        }
+                        else {
+                            maybeNotifyVideoLoaded(ctx);
+                        }
                         break;
+                    }
                 }
                 continue;
             }
@@ -386,7 +428,8 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
 
 inline static void RenderFrameToTexture(MpvPlayerContext* ctx) noexcept
 {
-    if (!ctx->mpvGL || !ctx->framebuffer || ctx->data.videoWidth <= 0 || ctx->data.videoHeight <= 0) {
+    if (!ctx->mpvGL || !ctx->framebuffer || !ctx->framebufferComplete ||
+        ctx->data.videoWidth <= 0 || ctx->data.videoHeight <= 0) {
         return;
     }
 
@@ -402,7 +445,16 @@ inline static void RenderFrameToTexture(MpvPlayerContext* ctx) noexcept
 		{MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &disable}, 
 		mpv_render_param{}
 	};
-	mpv_render_context_render(ctx->mpvGL, params);
+    GLint previousFramebuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, ctx->framebuffer);
+    const int renderError = mpv_render_context_render(ctx->mpvGL, params);
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+
+    if (renderError != 0 && renderError != ctx->lastRenderError) {
+        LOGF_ERROR("mpv_render_context_render failed with error %d", renderError);
+    }
+    ctx->lastRenderError = renderError;
 }
 
 void OFS_Videoplayer::Update(float delta) noexcept
@@ -462,6 +514,9 @@ void OFS_Videoplayer::OpenVideo(const std::string& path) noexcept
     newCache.currentSpeed = CTX->data.currentSpeed;
     newCache.paused = CTX->data.paused;
     CTX->data = newCache;
+    CTX->fileLoadedEventReceived = false;
+    CTX->framebufferComplete = false;
+    CTX->lastRenderError = 0;
 
     SetPaused(true);
     SetVolume(CTX->data.currentVolume);
