@@ -318,16 +318,21 @@ std::string Util::Resource(const std::string& path) noexcept
 	// SDL_GetBasePath returns Contents/Resources for bundled applications by
 	// default, but an SDL_FILESYSTEM_BASE_DIR_TYPE override may return
 	// Contents/MacOS instead. Handle both forms without duplicating Resources.
-	if (base.filename() == L"Resources") {
-		base /= L"data";
+	// SDL includes a trailing separator in the returned path. Normalize it
+	// before inspecting the final component; on POSIX, filename() is otherwise
+	// empty. Use UTF-8 path components here because macOS filesystem paths use
+	// char as their native value type.
+	base = base.lexically_normal();
+	if (base.filename().u8string() == "Resources") {
+		base /= "data";
 	}
 	else {
-		base = base.parent_path() / L"Resources" / L"data";
+		base = base.parent_path() / "Resources" / "data";
 	}
 #else
 	base /= L"data";
 #endif
-	base /= Util::Utf8ToUtf16(path);
+	base /= Util::PathFromString(path);
 	base.make_preferred();
 	return base.u8string();
 }
