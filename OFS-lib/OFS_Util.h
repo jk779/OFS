@@ -20,9 +20,13 @@
 #include "OFS_Profiling.h"
 #include "OFS_FileLogging.h"
 
+#if defined(__i386__) || defined(__x86_64__)
 #include "emmintrin.h" // for _mm_pause
-
 #define OFS_PAUSE_INTRIN _mm_pause
+#else
+#include <thread>
+#define OFS_PAUSE_INTRIN std::this_thread::yield
+#endif
 
 // helper for FontAwesome. Version 4.7.0 2016 ttf
 #define ICON_FOLDER_OPEN "\xef\x81\xbc"
