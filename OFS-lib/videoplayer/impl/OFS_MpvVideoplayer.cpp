@@ -247,11 +247,12 @@ bool OFS_Videoplayer::Init(bool hwAccel) noexcept
         return SDL_GL_GetProcAddress(fnName);
     };
     
-    uint32_t enable = 1;
+	// OpenFunscripter performs regular mpv calls and render-context calls on
+	// the same main thread. Advanced control requires stricter threading
+	// guarantees and is not needed for this integration, so leave it disabled.
 	mpv_render_param renderParams[] = {
 		mpv_render_param{MPV_RENDER_PARAM_API_TYPE, (void*)MPV_RENDER_API_TYPE_OPENGL},
 		mpv_render_param{MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &init_params},
-		mpv_render_param{MPV_RENDER_PARAM_ADVANCED_CONTROL, &enable },
 		mpv_render_param{}
 	};
 
