@@ -315,8 +315,15 @@ std::string Util::Resource(const std::string& path) noexcept
 {
 	auto base = Util::Basepath();
 #if defined(__APPLE__)
-	// SDL_GetBasePath points at Contents/MacOS for a bundled application.
-	base = base.parent_path() / L"Resources" / L"data";
+	// SDL_GetBasePath returns Contents/Resources for bundled applications by
+	// default, but an SDL_FILESYSTEM_BASE_DIR_TYPE override may return
+	// Contents/MacOS instead. Handle both forms without duplicating Resources.
+	if (base.filename() == L"Resources") {
+		base /= L"data";
+	}
+	else {
+		base = base.parent_path() / L"Resources" / L"data";
+	}
 #else
 	base /= L"data";
 #endif
