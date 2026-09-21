@@ -72,29 +72,27 @@ else()
 						"${CMAKE_SOURCE_DIR}/data/" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/data")
 endif()
 
-if(APPLE AND OFS_BUNDLE_MACOS_LIBMPV)
-	if(NOT OFS_MPV_LIBRARY)
+if(APPLE)
+	if(OFS_BUNDLE_MACOS_LIBMPV AND NOT OFS_MPV_LIBRARY)
 		message(FATAL_ERROR
 			"OFS_BUNDLE_MACOS_LIBMPV is enabled, but no libmpv.dylib was discovered. "
 			"Set OFS_MPV_ROOT or disable OFS_BUNDLE_MACOS_LIBMPV.")
 	endif()
 
-	set(OFS_MACOS_BUNDLE_STAMP
-		"${CMAKE_CURRENT_BINARY_DIR}/macos-libmpv-bundle.stamp")
-	add_custom_command(
-		OUTPUT "${OFS_MACOS_BUNDLE_STAMP}"
+	# This is intentionally an always-run target. The Homebrew dependency graph
+	# and the existing app bundle are external to CMake's timestamp graph, so a
+	# stamp can leave stale dylibs or an old Frameworks rpath behind.
+	add_custom_target(OFS_macos_bundle_libmpv ALL
 		COMMAND ${CMAKE_COMMAND}
 			"-DOFS_APP_EXECUTABLE=$<TARGET_FILE:${PROJECT_NAME}>"
+			"-DOFS_BUNDLE_ENABLED=${OFS_BUNDLE_MACOS_LIBMPV}"
 			"-DOFS_MPV_LIBRARY=${OFS_MPV_LIBRARY}"
 			"-DOFS_ADHOC_SIGN=${OFS_MACOS_ADHOC_SIGN}"
 			-P "${CMAKE_SOURCE_DIR}/cmake/BundleMacOSDependencies.cmake"
-		COMMAND ${CMAKE_COMMAND} -E touch "${OFS_MACOS_BUNDLE_STAMP}"
 		DEPENDS
 			${PROJECT_NAME}
 			"${CMAKE_SOURCE_DIR}/cmake/BundleMacOSDependencies.cmake"
 		VERBATIM)
-	add_custom_target(OFS_macos_bundle_libmpv ALL
-		DEPENDS "${OFS_MACOS_BUNDLE_STAMP}")
 	add_dependencies(OFS_macos_bundle_libmpv ${PROJECT_NAME})
 endif()
 

@@ -7,11 +7,20 @@ if(NOT APPLE)
 	message(FATAL_ERROR "BundleMacOSDependencies.cmake is only supported on macOS")
 endif()
 
-foreach(_required_var OFS_APP_EXECUTABLE OFS_MPV_LIBRARY)
+if(NOT DEFINED OFS_BUNDLE_ENABLED)
+	set(OFS_BUNDLE_ENABLED ON)
+endif()
+
+foreach(_required_var OFS_APP_EXECUTABLE)
 	if(NOT DEFINED ${_required_var} OR "${${_required_var}}" STREQUAL "")
 		message(FATAL_ERROR "${_required_var} is required")
 	endif()
 endforeach()
+
+if(OFS_BUNDLE_ENABLED AND (NOT DEFINED OFS_MPV_LIBRARY
+	OR "${OFS_MPV_LIBRARY}" STREQUAL ""))
+	message(FATAL_ERROR "OFS_MPV_LIBRARY is required when OFS_BUNDLE_ENABLED is enabled")
+endif()
 
 if(NOT DEFINED OFS_ADHOC_SIGN)
 	set(OFS_ADHOC_SIGN ON)
@@ -21,16 +30,20 @@ find_program(OFS_OTOOL otool REQUIRED)
 find_program(OFS_INSTALL_NAME_TOOL install_name_tool REQUIRED)
 if(OFS_ADHOC_SIGN)
 	find_program(OFS_CODESIGN codesign REQUIRED)
+else()
+	find_program(OFS_CODESIGN codesign)
 endif()
 
 if(NOT EXISTS "${OFS_APP_EXECUTABLE}")
 	message(FATAL_ERROR "App executable does not exist: ${OFS_APP_EXECUTABLE}")
 endif()
-if(NOT EXISTS "${OFS_MPV_LIBRARY}")
+if(OFS_BUNDLE_ENABLED AND NOT EXISTS "${OFS_MPV_LIBRARY}")
 	message(FATAL_ERROR "libmpv does not exist: ${OFS_MPV_LIBRARY}")
 endif()
 
-get_filename_component(OFS_MPV_LIBRARY_REAL "${OFS_MPV_LIBRARY}" REALPATH)
+if(OFS_BUNDLE_ENABLED)
+	get_filename_component(OFS_MPV_LIBRARY_REAL "${OFS_MPV_LIBRARY}" REALPATH)
+endif()
 get_filename_component(OFS_APP_MACOS_DIR "${OFS_APP_EXECUTABLE}" DIRECTORY)
 get_filename_component(OFS_APP_CONTENTS_DIR "${OFS_APP_MACOS_DIR}" DIRECTORY)
 get_filename_component(OFS_APP_BUNDLE "${OFS_APP_CONTENTS_DIR}" DIRECTORY)
@@ -205,6 +218,64 @@ function(ofs_install_name_tool binary)
 			"install_name_tool failed for ${binary}: ${error_output}${output}")
 	endif()
 endfunction()
+
+function(ofs_remove_signature target)
+	if(NOT OFS_CODESIGN OR NOT EXISTS "${target}")
+		return()
+	endif()
+
+	execute_process(
+		COMMAND "${OFS_CODESIGN}" --remove-signature "${target}"
+		RESULT_VARIABLE result
+		OUTPUT_VARIABLE output
+		ERROR_VARIABLE error_output)
+	if(NOT result EQUAL 0)
+		string(TOLOWER "${error_output}${output}" signature_error)
+		if(NOT signature_error MATCHES "not signed")
+			message(FATAL_ERROR
+				"Removing the existing code signature failed for ${target}: "
+				"${error_output}${output}")
+		endif()
+	endif()
+endfunction()
+
+# install_name_tool cannot safely update a signed executable. Remove any
+# previous signature before changing its load commands; the final signing
+# state is restored below according to OFS_ADHOC_SIGN.
+ofs_remove_signature("${OFS_APP_EXECUTABLE}")
+ofs_remove_signature("${OFS_APP_BUNDLE}")
+
+if(NOT OFS_BUNDLE_ENABLED)
+	# The output bundle is shared between CMake configurations. Explicitly
+	# clean artifacts from an earlier ON build so OFF is effective on reuse.
+	if(EXISTS "${OFS_FRAMEWORKS_DIR}" OR IS_SYMLINK "${OFS_FRAMEWORKS_DIR}")
+		file(REMOVE_RECURSE "${OFS_FRAMEWORKS_DIR}")
+	endif()
+
+	ofs_read_rpaths("${OFS_APP_EXECUTABLE}" app_rpaths)
+	list(FIND app_rpaths "@executable_path/../Frameworks" app_frameworks_rpath_index)
+	if(app_frameworks_rpath_index GREATER_EQUAL 0)
+		ofs_install_name_tool("${OFS_APP_EXECUTABLE}"
+			-delete_rpath "@executable_path/../Frameworks")
+	endif()
+
+	if(OFS_ADHOC_SIGN)
+		execute_process(
+			COMMAND "${OFS_CODESIGN}" --force --sign - --timestamp=none
+				"${OFS_APP_BUNDLE}"
+			RESULT_VARIABLE sign_result
+			OUTPUT_VARIABLE sign_output
+			ERROR_VARIABLE sign_error)
+		if(NOT sign_result EQUAL 0)
+			message(FATAL_ERROR
+				"Ad-hoc signing failed for ${OFS_APP_BUNDLE}: "
+				"${sign_error}${sign_output}")
+		endif()
+	endif()
+
+	message(STATUS "macOS libmpv bundling disabled; removed stale Frameworks and rpath")
+	return()
+endif()
 
 # Seed the graph with the stable loader name expected inside the app bundle.
 ofs_add_bundle_file("${OFS_MPV_LIBRARY_REAL}" "libmpv.dylib" OFS_MPV_BUNDLE_NAME)
