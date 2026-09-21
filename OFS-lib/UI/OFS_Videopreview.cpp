@@ -20,35 +20,50 @@ void VideoPreview::Init() noexcept
 void VideoPreview::Update(float delta) noexcept
 {
 	OFS_PROFILE(__FUNCTION__);
+	if (!videoOpened) return;
 	player->Update(delta);
 }
 
-void VideoPreview::SetPosition(float pos) noexcept
+void VideoPreview::SetVideoPath(const std::string& path) noexcept
 {
 	OFS_PROFILE(__FUNCTION__);
-	player->SetPositionPercent(pos);
+	if (videoPath == path) return;
+	if (videoOpened) {
+		player->CloseVideo();
+	}
+	videoPath = path;
+	videoOpened = false;
 }
 
-void VideoPreview::PreviewVideo(const std::string& path, float pos) noexcept
+void VideoPreview::PreviewVideo(float pos) noexcept
 {
 	OFS_PROFILE(__FUNCTION__);
-	player->OpenVideo(path);
-	player->SetVolume(0.f);
+	if (videoPath.empty()) return;
+	if (!videoOpened) {
+		player->OpenVideo(videoPath);
+		player->SetVolume(0.f);
+		videoOpened = true;
+	}
+	player->SetPositionPercent(pos);
 }
 
 void VideoPreview::Play() noexcept
 {
 	OFS_PROFILE(__FUNCTION__);
+	if (!videoOpened) return;
 	player->SetPaused(false);
 }
 
 void VideoPreview::Pause() noexcept
 {
 	OFS_PROFILE(__FUNCTION__);
+	if (!videoOpened) return;
 	player->SetPaused(true);
 }
 
 void VideoPreview::CloseVideo() noexcept
 {
+	if (!videoOpened) return;
 	player->CloseVideo();
+	videoOpened = false;
 }
