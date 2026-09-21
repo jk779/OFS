@@ -53,6 +53,72 @@ if(APPLE)
 endif()
 
 add_library(${PROJECT_NAME} STATIC ${OFS_LIB_SOURCES})
+
+if(APPLE)
+	# AppleClang rejects the pinned sol2 optional<T&>::emplace overload because
+	# its forwarding implementation is not valid for a reference specialization.
+	# Keep the original sol2 pin and patch only this header in the build tree.
+	set(OFS_SOL2_OPTIONAL_SOURCE
+		"${CMAKE_SOURCE_DIR}/lib/sol2/include/sol/optional_implementation.hpp")
+	set(OFS_SOL2_COMPAT_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/sol2-compat")
+	set(OFS_SOL2_OPTIONAL_COMPAT_HEADER
+		"${OFS_SOL2_COMPAT_INCLUDE_DIR}/sol/optional_implementation.hpp")
+
+	if(NOT EXISTS "${OFS_SOL2_OPTIONAL_SOURCE}")
+		message(FATAL_ERROR
+			"Pinned sol2 optional implementation was not found: ${OFS_SOL2_OPTIONAL_SOURCE}")
+	endif()
+
+	file(READ "${OFS_SOL2_OPTIONAL_SOURCE}" OFS_SOL2_OPTIONAL_CONTENT)
+	set(OFS_SOL2_OPTIONAL_OLD_SNIPPET [=[
+		template <class... Args>
+		T& emplace(Args&&... args) noexcept {
+			static_assert(std::is_constructible<T, Args&&...>::value, "T must be constructible with Args");
+
+			*this = nullopt;
+			this->construct(std::forward<Args>(args)...);
+		}
+]=])
+	set(OFS_SOL2_OPTIONAL_NEW_SNIPPET [=[
+		T& emplace(T& arg) noexcept {
+			*this = nullopt;
+			m_value = &arg;
+			return **this;
+		}
+]=])
+
+	string(FIND "${OFS_SOL2_OPTIONAL_CONTENT}" "${OFS_SOL2_OPTIONAL_OLD_SNIPPET}"
+		OFS_SOL2_OPTIONAL_PATCH_OFFSET)
+	if(OFS_SOL2_OPTIONAL_PATCH_OFFSET EQUAL -1)
+		message(FATAL_ERROR
+			"Pinned sol2 optional<T&>::emplace snippet was not found in ${OFS_SOL2_OPTIONAL_SOURCE}; refusing to patch an unknown version")
+	endif()
+
+	string(LENGTH "${OFS_SOL2_OPTIONAL_OLD_SNIPPET}" OFS_SOL2_OPTIONAL_PATCH_LENGTH)
+	math(EXPR OFS_SOL2_OPTIONAL_PATCH_TAIL_OFFSET
+		"${OFS_SOL2_OPTIONAL_PATCH_OFFSET} + ${OFS_SOL2_OPTIONAL_PATCH_LENGTH}")
+	string(SUBSTRING "${OFS_SOL2_OPTIONAL_CONTENT}" 0
+		"${OFS_SOL2_OPTIONAL_PATCH_OFFSET}" OFS_SOL2_OPTIONAL_PATCH_PREFIX)
+	string(SUBSTRING "${OFS_SOL2_OPTIONAL_CONTENT}" "${OFS_SOL2_OPTIONAL_PATCH_TAIL_OFFSET}" -1
+		OFS_SOL2_OPTIONAL_PATCH_SUFFIX)
+	string(FIND "${OFS_SOL2_OPTIONAL_PATCH_SUFFIX}" "${OFS_SOL2_OPTIONAL_OLD_SNIPPET}"
+		OFS_SOL2_OPTIONAL_SECOND_PATCH_OFFSET)
+	if(OFS_SOL2_OPTIONAL_SECOND_PATCH_OFFSET GREATER -1)
+		message(FATAL_ERROR
+			"Pinned sol2 optional<T&>::emplace snippet occurs more than once in ${OFS_SOL2_OPTIONAL_SOURCE}; refusing an ambiguous patch")
+	endif()
+
+	file(MAKE_DIRECTORY "${OFS_SOL2_COMPAT_INCLUDE_DIR}/sol")
+	file(WRITE "${OFS_SOL2_OPTIONAL_COMPAT_HEADER}"
+		"${OFS_SOL2_OPTIONAL_PATCH_PREFIX}${OFS_SOL2_OPTIONAL_NEW_SNIPPET}${OFS_SOL2_OPTIONAL_PATCH_SUFFIX}")
+	if(NOT TARGET sol2)
+		message(FATAL_ERROR "The sol2 target is required for the macOS compatibility shim")
+	endif()
+	target_include_directories(sol2 BEFORE INTERFACE
+		"$<BUILD_INTERFACE:${OFS_SOL2_COMPAT_INCLUDE_DIR}>")
+	message(STATUS "Using generated macOS sol2 optional<T&>::emplace compatibility header")
+endif()
+
 target_include_directories(${PROJECT_NAME} PUBLIC
 	"${PROJECT_SOURCE_DIR}/event/"
 	"${PROJECT_SOURCE_DIR}/Funscript/"
