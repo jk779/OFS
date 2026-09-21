@@ -44,6 +44,13 @@ static constexpr int DefaultHeight = 1080;
 
 static constexpr int AutoBackupIntervalSeconds = 60;
 
+#if defined(__APPLE__)
+static constexpr const char* ApplicationWindowTitle = OFS_MACOS_DISPLAY_TITLE;
+#else
+static constexpr const char* ApplicationWindowTitle =
+    "OpenFunscripter " OFS_LATEST_GIT_TAG "@" OFS_LATEST_GIT_HASH;
+#endif
+
 bool OpenFunscripter::imguiSetup() noexcept
 {
     // Setup Dear ImGui context
@@ -176,7 +183,7 @@ bool OpenFunscripter::Init(int argc, char* argv[])
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     window = SDL_CreateWindow(
-        "OpenFunscripter " OFS_LATEST_GIT_TAG "@" OFS_LATEST_GIT_HASH,
+        ApplicationWindowTitle,
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         DefaultWidth, DefaultHeight,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_HIDDEN);
@@ -1900,6 +1907,14 @@ void OpenFunscripter::UpdateNewActiveScript(uint32_t activeIndex) noexcept
 
 void OpenFunscripter::updateTitle() noexcept
 {
+#if defined(__APPLE__)
+    const char* title = ApplicationWindowTitle;
+    if (LoadedProject->IsValid()) {
+        title = Util::Format("%s - \"%s\"",
+            ApplicationWindowTitle,
+            LoadedProject->Path().c_str());
+    }
+#else
     const char* title = "OFS";
     if (LoadedProject->IsValid()) {
         title = Util::Format("OpenFunscripter %s@%s - \"%s\"",
@@ -1912,6 +1927,7 @@ void OpenFunscripter::updateTitle() noexcept
             OFS_LATEST_GIT_TAG,
             OFS_LATEST_GIT_HASH);
     }
+#endif
     SDL_SetWindowTitle(window, title);
 }
 

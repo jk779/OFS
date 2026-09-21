@@ -37,7 +37,9 @@ are refreshed. `OFS_MACOS_ADHOC_SIGN` signs the app and bundled dylibs for
 local testing. This is not Developer ID signing or notarization.
 
 The output is `bin/OpenFunscripter.app`. `build/macos-arm64` is generated and
-ignored; do not add it to source control. The bundle stores project resources
+ignored; do not add it to source control. The checked-in
+`OpenFunscripter.icns` is packaged directly as the application icon; it is not
+generated during the build. The bundle stores project resources
 under `Contents/Resources/data`. On macOS, `SDL_GetBasePath()` can return
 `Contents/Resources/` with a trailing separator; resource lookup must normalize
 that path before appending `data`, otherwise it can produce an invalid
@@ -63,6 +65,12 @@ context, which caused severe UI/video slowness even when VideoToolbox decoded
 the video. A physical Apple Silicon Mac uses a different graphics path and is
 the relevant performance target; do not infer native-Mac performance from that
 VM result.
+
+The macOS display identity is `OpenFunscripter v3.2.0 — macOS v1.0`. The
+bundle's `CFBundleShortVersionString` remains the upstream `3.2.0`, while
+`CFBundleVersion` uses `320.1` for the first macOS port build. Git revision
+details remain available in the About/diagnostic UI and are not included in
+the normal macOS window title.
 
 Verify a local bundle with:
 

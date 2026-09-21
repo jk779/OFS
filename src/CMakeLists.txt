@@ -48,12 +48,21 @@ else()
 endif()
 
 if(APPLE)
+	set(OFS_MACOS_ICON "${CMAKE_SOURCE_DIR}/OpenFunscripter.icns")
+	set_source_files_properties("${OFS_MACOS_ICON}"
+		PROPERTIES
+			MACOSX_PACKAGE_LOCATION Resources)
+	target_sources(${PROJECT_NAME} PRIVATE "${OFS_MACOS_ICON}")
+	target_compile_definitions(${PROJECT_NAME} PRIVATE
+		"OFS_MACOS_DISPLAY_TITLE=\"OpenFunscripter v3.2.0 — macOS v1.0\"")
+
 	set_target_properties(${PROJECT_NAME} PROPERTIES
 		MACOSX_BUNDLE_BUNDLE_NAME "OpenFunscripter"
 		MACOSX_BUNDLE_GUI_IDENTIFIER "com.openfunscripter.OFS"
-		MACOSX_BUNDLE_BUNDLE_VERSION "1"
-		MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
-		MACOSX_BUNDLE_INFO_STRING "OpenFunscripter funscript editor"
+		MACOSX_BUNDLE_BUNDLE_VERSION "320.1"
+		MACOSX_BUNDLE_SHORT_VERSION_STRING "3.2.0"
+		MACOSX_BUNDLE_INFO_STRING "OpenFunscripter v3.2.0 — macOS v1.0"
+		MACOSX_BUNDLE_ICON_FILE "OpenFunscripter.icns"
 	)
 endif()
 
