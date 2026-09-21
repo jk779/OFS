@@ -240,11 +240,18 @@ elseif(APPLE)
 	)
 	if (MPV_LIBRARY)
 		message(STATUS "Found libmpv at ${MPV_LIBRARY}")
+		# Keep the discovered path available to sibling directories. The runtime
+		# loader still receives the developer path as a fallback, while src/ uses
+		# this value as the seed for the optional app-bundle dependency graph.
+		set(OFS_MPV_LIBRARY "${MPV_LIBRARY}" CACHE INTERNAL
+			"Discovered macOS libmpv dylib used for optional app bundling" FORCE)
 		target_compile_definitions(${PROJECT_NAME} PUBLIC
 			"OFS_MPV_LIBRARY_PATH=\"${MPV_LIBRARY}\""
 		)
 	else()
 		message(STATUS "libmpv dylib not found at configure time; runtime fallback paths will be tried")
+		set(OFS_MPV_LIBRARY "" CACHE INTERNAL
+			"Discovered macOS libmpv dylib used for optional app bundling" FORCE)
 	endif()
 	target_include_directories(${PROJECT_NAME} PUBLIC
 		"${MPV_INCLUDE_DIR}"

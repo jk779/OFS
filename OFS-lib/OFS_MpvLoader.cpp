@@ -41,6 +41,7 @@ bool OFS_MpvLoader::Load() noexcept
     mpvHandle = SDL_LoadObject("mpv-2.dll");
 #elif defined(__APPLE__)
     const char* mpvPaths[] = {
+        "@executable_path/../Frameworks/libmpv.dylib",
 #ifdef OFS_MPV_LIBRARY_PATH
         OFS_MPV_LIBRARY_PATH,
 #endif
