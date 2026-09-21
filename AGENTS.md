@@ -51,6 +51,12 @@ tree for `sol/optional_implementation.hpp`. CMake refuses to patch an unknown
 or ambiguous sol2 header, preserving reproducibility without changing the
 submodule checkout.
 
+Built-in keyboard shortcuts use `OFS_Platform::PrimaryImGuiModifier`: Command
+on macOS and Ctrl elsewhere. SDL selection checks use the matching platform
+modifier. The keybinding state migrates an exact persisted legacy macOS Ctrl
+default to Command once; unrelated user-defined Ctrl bindings are preserved.
+Keep explicit Ctrl/Super serialization and ImGui backend handling unchanged.
+
 The embedded player must set mpv's `vo=libmpv` after mpv configuration loading
 and initialization, otherwise mpv can open a separate native window instead of
 rendering into OFS. mpv wakeup/render callbacks are coalesced pending

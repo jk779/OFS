@@ -8,6 +8,7 @@
 #include "OFS_Shader.h"
 #include "OFS_MpvLoader.h"
 #include "OFS_Localization.h"
+#include "OFS_Platform.h"
 
 #include "state/OpenFunscripterState.h"
 #include "state/states/VideoplayerWindowState.h"
@@ -474,7 +475,7 @@ void OpenFunscripter::registerBindings()
                 [this]() { saveProject(); } },
             Tr::ACTION_SAVE_PROJECT, "Core",
             {
-                { ImGuiMod_Ctrl, ImGuiKey_S },
+                { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_S },
             });
 
         keys->RegisterAction(
@@ -482,7 +483,7 @@ void OpenFunscripter::registerBindings()
                 [this]() { quickExport(); } },
             Tr::ACTION_QUICK_EXPORT, "Core",
             {
-                { ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiKey_S },
+                { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Shift, ImGuiKey_S },
             });
 
         keys->RegisterAction(
@@ -584,7 +585,7 @@ void OpenFunscripter::registerBindings()
                 false },
             Tr::ACTION_PREVIOUS_ACTION_MULTI, "Navigation",
             {
-                { ImGuiMod_Ctrl, ImGuiKey_DownArrow, true },
+                { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_DownArrow, true },
             });
 
         keys->RegisterAction(
@@ -610,7 +611,7 @@ void OpenFunscripter::registerBindings()
                 false },
             Tr::ACTION_NEXT_ACTION_MULTI, "Navigation",
             {
-                { ImGuiMod_Ctrl, ImGuiKey_UpArrow, true },
+                { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_UpArrow, true },
             });
 
         // FRAME CONTROL
@@ -650,7 +651,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_FAST_STEP, "Navigation",
-            { { ImGuiMod_Ctrl, ImGuiKey_RightArrow, true } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_RightArrow, true } });
 
         keys->RegisterAction(
             { "fast_backstep",
@@ -660,7 +661,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_FAST_BACKSTEP, "Navigation",
-            { { ImGuiMod_Ctrl, ImGuiKey_LeftArrow, true } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_LeftArrow, true } });
     }
 
     keys->RegisterGroup("Utility", Tr::UTILITY_BINDING_GROUP);
@@ -673,7 +674,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_UNDO, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_Z, true } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_Z, true } });
 
         keys->RegisterAction(
             { "redo",
@@ -682,7 +683,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_REDO, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_Y, true } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_Y, true } });
 
         // COPY / PASTE
         keys->RegisterAction(
@@ -692,7 +693,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_COPY, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_C } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_C } });
 
         keys->RegisterAction(
             { "paste",
@@ -701,7 +702,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_PASTE, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_V } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_V } });
 
         keys->RegisterAction(
             { "paste_exact",
@@ -710,7 +711,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_PASTE_EXACT, "Utility",
-            { { ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiKey_V } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Shift, ImGuiKey_V } });
 
         keys->RegisterAction(
             { "cut",
@@ -719,7 +720,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_CUT, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_X } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_X } });
 
         keys->RegisterAction(
             { "select_all",
@@ -728,7 +729,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_SELECT_ALL, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_A } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_A } });
 
         keys->RegisterAction(
             { "deselect_all",
@@ -737,7 +738,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_DESELECT_ALL, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_D } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_D } });
 
         keys->RegisterAction(
             { "select_all_left",
@@ -746,7 +747,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_SELECT_ALL_LEFT, "Utility",
-            { { ImGuiMod_Ctrl | ImGuiMod_Alt, ImGuiKey_LeftArrow } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Alt, ImGuiKey_LeftArrow } });
 
         keys->RegisterAction(
             { "select_all_right",
@@ -755,7 +756,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_SELECT_ALL_RIGHT, "Utility",
-            { { ImGuiMod_Ctrl | ImGuiMod_Alt, ImGuiKey_RightArrow } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Alt, ImGuiKey_RightArrow } });
 
         keys->RegisterAction(
             { "select_top_points",
@@ -964,7 +965,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_MOVE_ACTIONS_LEFT_SNAP, "Moving",
-            { { ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiKey_LeftArrow, true } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Shift, ImGuiKey_LeftArrow, true } });
 
         keys->RegisterAction(
             { "move_actions_right_snapped",
@@ -973,7 +974,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_MOVE_ACTIONS_RIGHT_SNAP, "Moving",
-            { { ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiKey_RightArrow, true } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Shift, ImGuiKey_RightArrow, true } });
 
         keys->RegisterAction(
             { "move_actions_left",
@@ -1412,7 +1413,7 @@ void OpenFunscripter::FunscriptChanged(const FunscriptActionsChangedEvent* ev) n
 
 void OpenFunscripter::ScriptTimelineActionClicked(const FunscriptActionClickedEvent* ev) noexcept
 {
-    if (SDL_GetModState() & KMOD_CTRL) {
+    if (OFS_Platform::IsPrimaryModifierDown()) {
         if (auto script = ev->script.lock()) {
             script->SelectAction(ev->action);
         }
