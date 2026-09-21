@@ -205,27 +205,6 @@ bool OpenFunscripter::Init(int argc, char* argv[])
         return false;
     }
 
-    GLint maxTextureSize = 0;
-    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
-    GLint glMajor = 0;
-    GLint glMinor = 0;
-    glGetIntegerv(GL_MAJOR_VERSION, &glMajor);
-    glGetIntegerv(GL_MINOR_VERSION, &glMinor);
-    GLint glProfile = 0;
-    SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &glProfile);
-    GLint contextMajor = 0;
-    GLint contextMinor = 0;
-    SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &contextMajor);
-    SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &contextMinor);
-    const auto glString = [](GLenum name) -> const char* {
-        const auto* value = glGetString(name);
-        return value ? reinterpret_cast<const char*>(value) : "<unavailable>";
-    };
-    LOGF_INFO("OpenGL context: vendor=\"%s\" renderer=\"%s\" version=\"%s\" GLSL=\"%s\" GL=%d.%d maxTextureSize=%d SDLContext=%d.%d profile=0x%x",
-        glString(GL_VENDOR), glString(GL_RENDERER), glString(GL_VERSION),
-        glString(GL_SHADING_LANGUAGE_VERSION), glMajor, glMinor, maxTextureSize,
-        contextMajor, contextMinor, glProfile);
-
     if (!imguiSetup()) {
         LOG_ERROR("Failed to setup ImGui");
         return false;

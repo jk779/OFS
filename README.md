@@ -14,8 +14,8 @@ Known linux dependencies to just compile are `build-essential libmpv-dev libglvn
 
 ### Native macOS (Apple Silicon)
 
-The native macOS build has been verified on Apple Silicon. Intel and Universal
-builds are not currently part of the verified build matrix.
+The native macOS build is verified for Apple Silicon (`arm64`). Intel and
+Universal builds are not currently verified.
 
 Required tools and libraries are:
 
@@ -24,13 +24,10 @@ Required tools and libraries are:
 - CMake 3.16 or newer
 - libmpv headers and the `libmpv.dylib` library
 
-For example, Homebrew can provide CMake and libmpv on the build machine:
+The commands below use Homebrew's `mpv` package at `/opt/homebrew/opt/mpv` as
+the libmpv provider. This dependency is required only on the build machine.
 
-```sh
-brew install cmake mpv
-```
-
-Configure and build from the repository root as follows:
+From the repository root, initialize the submodules and build the application:
 
 ```sh
 git submodule update --init --recursive
@@ -46,19 +43,14 @@ cmake -S . -B build/macos-arm64 -G "Unix Makefiles" \
 cmake --build build/macos-arm64 --config Release --parallel 4
 ```
 
-`CMAKE_POLICY_VERSION_MINIMUM` is needed when CMake 4 configures the legacy
-bundled dependencies. The SDL warning override is needed by its older macOS
-HIDAPI sources with current AppleClang. `OFS_MPV_ROOT` points CMake at the
-Homebrew libmpv headers and library. The bundling step copies libmpv and its
-non-system dylib dependencies into the app, so the target Mac does not need
-Homebrew installed. Homebrew (or another local libmpv installation) is still
-needed on the build machine.
+The policy and declaration-warning options are compatibility settings for the
+bundled dependencies. `OFS_BUNDLE_MACOS_LIBMPV` copies libmpv and its
+non-system dylib dependencies into the application bundle and rewrites their
+load paths. A target Mac therefore does not need Homebrew installed.
 
-The generated application is `bin/OpenFunscripter.app`. The `build/macos-arm64`
-directory is an ignored build directory and is recreated by CMake; it is not
-source content that belongs in the repository. The ad-hoc signature is suitable
-for local testing only and is not Developer ID signing or notarization. Verify
-the resulting bundle with:
+The generated application is `bin/OpenFunscripter.app`. The ad-hoc signature
+is suitable for local testing only; it is not Developer ID signing or
+notarization. Verify the resulting bundle with:
 
 ```sh
 codesign --verify --deep --strict --verbose=2 bin/OpenFunscripter.app
