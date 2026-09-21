@@ -71,12 +71,25 @@ struct MpvPlayerContext
 
 static void OnMpvEvents(void* ctx) noexcept
 {
-    SDL_AtomicIncRef(&CTX->hasEvents);
+    // The wakeup callback is only a notification that work is available.  A
+    // counter can grow without bound while the main thread is busy and makes
+    // Update() repeatedly process the same queue.  Coalesce notifications;
+    // ProcessEvents() drains the queue in one pass on the main thread.
+    SDL_AtomicSet(&CTX->hasEvents, 1);
 }
 
 static void OnMpvRenderUpdate(void* ctx) noexcept
 {
-    SDL_AtomicIncRef(&CTX->renderUpdate);
+    // mpv's render callback is likewise a pending notification, not a frame
+    // counter.  The render API reports the current update flags when polled.
+    SDL_AtomicSet(&CTX->renderUpdate, 1);
+}
+
+inline static bool takePendingNotification(SDL_atomic_t& pending) noexcept
+{
+    // Clear with CAS so a callback racing with this operation leaves the flag
+    // set for the next Update() call instead of being lost.
+    return SDL_AtomicCAS(&pending, 1, 0) == SDL_TRUE;
 }
 
 inline static void notifyVideoLoaded(MpvPlayerContext* ctx) noexcept
@@ -372,6 +385,10 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
 
 inline static void RenderFrameToTexture(MpvPlayerContext* ctx) noexcept
 {
+    if (!ctx->mpvGL || !ctx->framebuffer || ctx->data.videoWidth <= 0 || ctx->data.videoHeight <= 0) {
+        return;
+    }
+
     mpv_opengl_fbo fbo = {0};
 	fbo.fbo = ctx->framebuffer; 
 	fbo.w = ctx->data.videoWidth;
@@ -389,18 +406,15 @@ inline static void RenderFrameToTexture(MpvPlayerContext* ctx) noexcept
 
 void OFS_Videoplayer::Update(float delta) noexcept
 {
-    while(SDL_AtomicGet(&CTX->hasEvents) > 0) {
+    if (takePendingNotification(CTX->hasEvents)) {
         ProcessEvents(CTX);
-        SDL_AtomicDecRef(&CTX->hasEvents);
     }
 
-    while(SDL_AtomicGet(&CTX->renderUpdate) > 0)
-    {
+    if (takePendingNotification(CTX->renderUpdate)) {
         uint64_t flags = mpv_render_context_update(CTX->mpvGL);
 	    if (flags & MPV_RENDER_UPDATE_FRAME) {
             RenderFrameToTexture(CTX);
         }
-        SDL_AtomicDecRef(&CTX->renderUpdate);
     }
 }
 
