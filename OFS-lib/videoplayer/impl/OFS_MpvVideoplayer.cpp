@@ -181,6 +181,14 @@ bool OFS_Videoplayer::Init(bool hwAccel) noexcept
         LOGF_WARN("Failed to set mpv: config-dir=%s", confPath.c_str());
     }
 
+    // The default video output is not stable across mpv releases. The render
+    // API requires the libmpv video output; otherwise mpv may open its own
+    // native window instead of rendering into our OpenGL framebuffer.
+    error = mpv_set_option_string(CTX->mpv, "vo", "libmpv");
+    if(error != 0) {
+        LOG_WARN("Failed to set mpv: vo=libmpv");
+    }
+
     if(mpv_initialize(CTX->mpv) != 0) {
         return false;
     }
