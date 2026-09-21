@@ -1290,8 +1290,14 @@ void OpenFunscripter::render() noexcept
 
         SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
     }
+#if defined(__APPLE__)
+    // SDL_GL_SwapWindow flushes the double-buffered context.  A blocking
+    // glFinish here needlessly stalls the CPU/GPU pipeline on macOS and is
+    // especially noticeable while dragging UI controls.
+#else
     glFlush();
     glFinish();
+#endif
 }
 
 void OpenFunscripter::processEvents() noexcept
@@ -1702,6 +1708,34 @@ int OpenFunscripter::Run() noexcept
         const float minFrameTime = (float)PerfFreq / frameLimit;
 
         int32_t sleepMs = ((minFrameTime - (float)(FrameEnd - FrameStart)) / minFrameTime) * (1000.f / frameLimit);
+
+#if defined(__APPLE__)
+        if (!prefState.vsync) {
+            // Keep the final sub-millisecond part precise, but let the
+            // scheduler sleep for the rest of the frame.  The old path
+            // routinely busy-waited for several milliseconds at 150 Hz,
+            // which made the UI consume a full core and feel sluggish.
+            const uint64_t frameDeadline = FrameStart + static_cast<uint64_t>(minFrameTime);
+            for (;;) {
+                FrameEnd = SDL_GetPerformanceCounter();
+                if (FrameEnd >= frameDeadline) {
+                    break;
+                }
+
+                const uint64_t remaining = frameDeadline - FrameEnd;
+                const uint64_t remainingMs = (remaining * 1000) / PerfFreq;
+                if (remainingMs > 0) {
+                    SDL_Delay(static_cast<Uint32>(remainingMs));
+                }
+                else {
+                    OFS_PAUSE_INTRIN();
+                }
+            }
+        }
+        else if (sleepMs > 0) {
+            SDL_Delay(sleepMs);
+        }
+#else
         if (!IdleMode) sleepMs -= 1;
         if (sleepMs > 0) SDL_Delay(sleepMs);
 
@@ -1712,6 +1746,7 @@ int OpenFunscripter::Run() noexcept
                 FrameEnd = SDL_GetPerformanceCounter();
             }
         }
+#endif
 
         if (SDL_GetTicks() - IdleTimer > 3000) {
             setIdle(true);
