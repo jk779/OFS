@@ -148,8 +148,12 @@ inline static void showText(MpvPlayerContext* ctx, const char* text) noexcept
 
 OFS_Videoplayer::~OFS_Videoplayer() noexcept
 {
-    mpv_render_context_free(CTX->mpvGL);
-	mpv_destroy(CTX->mpv);
+	if (CTX->mpvGL) {
+		mpv_render_context_free(CTX->mpvGL);
+	}
+	if (CTX->mpv) {
+		mpv_destroy(CTX->mpv);
+	}
     delete CTX;
     ctx = nullptr;
 }
@@ -181,15 +185,18 @@ bool OFS_Videoplayer::Init(bool hwAccel) noexcept
         LOGF_WARN("Failed to set mpv: config-dir=%s", confPath.c_str());
     }
 
+    if(mpv_initialize(CTX->mpv) != 0) {
+        return false;
+    }
+
     // The default video output is not stable across mpv releases. The render
     // API requires the libmpv video output; otherwise mpv may open its own
     // native window instead of rendering into our OpenGL framebuffer.
     error = mpv_set_option_string(CTX->mpv, "vo", "libmpv");
     if(error != 0) {
-        LOG_WARN("Failed to set mpv: vo=libmpv");
-    }
-
-    if(mpv_initialize(CTX->mpv) != 0) {
+        LOG_ERROR("Failed to set mpv: vo=libmpv");
+        mpv_destroy(CTX->mpv);
+        CTX->mpv = nullptr;
         return false;
     }
 
