@@ -42,7 +42,8 @@ public:
 	}
 
 	void DrawTimeline() noexcept;
-	void DrawControls() noexcept;
+	void DrawControls(const char* statusText = nullptr, const char* statusTooltip = nullptr,
+		bool idle = false, const char* idleTooltip = nullptr) noexcept;
 
 	std::vector<uint8_t> RenderHeatmapToBitmapWithChapters(int16_t width, int16_t height, int16_t chapterHeight) noexcept;
 };

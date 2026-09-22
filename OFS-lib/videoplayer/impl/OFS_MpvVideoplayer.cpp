@@ -579,9 +579,9 @@ void OFS_Videoplayer::SeekFrames(int32_t offset) noexcept
     }
 }
 
-void OFS_Videoplayer::SetPaused(bool paused) noexcept
+void OFS_Videoplayer::SetPaused(bool paused, bool force) noexcept
 {
-    if ((bool)CTX->data.paused == paused) return;
+    if (!force && (bool)CTX->data.paused == paused) return;
     int64_t setPaused = paused;
     mpv_set_property_async(CTX->mpv, 0, "pause", MPV_FORMAT_FLAG, &setPaused);
 }
