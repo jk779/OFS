@@ -1,6 +1,7 @@
 #include "OFS_KeybindingSystem.h"
 #include "OFS_Util.h"
 #include "OFS_Localization.h"
+#include "OFS_Platform.h"
 #include "imgui_stdlib.h"
 
 #include <array>
@@ -45,6 +46,14 @@ inline static const char* getTriggerText(const OFS_ActionTrigger& trigger) noexc
         {
             addMod(mods, TR(KEY_MOD_CTRL));
         }
+        if(trigger.Mod & ImGuiMod_Super)
+        {
+#if defined(__APPLE__)
+            addMod(mods, "Cmd");
+#else
+            addMod(mods, "Super");
+#endif
+        }
         if(trigger.Mod & ImGuiMod_Alt)
         {
             addMod(mods, TR(KEY_MOD_ALT));
@@ -75,6 +84,47 @@ inline static const char* getTriggerText(const OFS_ActionTrigger& trigger) noexc
 
     return Util::FormatBuffer;
 }
+
+#if defined(__APPLE__)
+static void migrateLegacyMacOSTrigger(OFS_KeybindingState& state,
+                                      const std::string& actionId,
+                                      const OFS_ActionTrigger& defaultTrigger) noexcept
+{
+    if ((defaultTrigger.Mod & ImGuiMod_Super) == 0) {
+        return;
+    }
+
+    // A persisted Ctrl trigger is migrated only when it is the exact old
+    // built-in default for this action. User-defined Ctrl bindings remain
+    // untouched because their action id, key, modifiers, or repeat flag differ.
+    auto legacyTrigger = defaultTrigger;
+    legacyTrigger.Mod = (legacyTrigger.Mod & ~ImGuiMod_Super) | ImGuiMod_Ctrl;
+    auto legacyIt = state.Triggers.find(legacyTrigger);
+    if (legacyIt == state.Triggers.end() ||
+        legacyIt->MappedActionId != actionId ||
+        legacyIt->ShouldRepeat != defaultTrigger.ShouldRepeat) {
+        return;
+    }
+
+    auto currentIt = state.Triggers.find(defaultTrigger);
+    if (currentIt != state.Triggers.end()) {
+        // The desired binding already exists. Remove only the matching legacy
+        // default so Ctrl+Cmd duplicates cannot accumulate.
+        if (currentIt->MappedActionId == actionId &&
+            currentIt->ShouldRepeat == defaultTrigger.ShouldRepeat) {
+            state.Triggers.erase(legacyIt);
+        }
+        return;
+    }
+
+    auto migratedTrigger = *legacyIt;
+    migratedTrigger.Mod = defaultTrigger.Mod;
+    migratedTrigger.ShouldRepeat = defaultTrigger.ShouldRepeat;
+    migratedTrigger.MappedActionId = actionId;
+    state.Triggers.erase(legacyIt);
+    state.Triggers.emplace(migratedTrigger);
+}
+#endif
 
 OFS_KeybindingSystem::OFS_KeybindingSystem() noexcept
 {
@@ -181,6 +231,9 @@ void OFS_KeybindingSystem::RegisterAction(OFS_Action&& action, TrString name, co
 
         for(auto& trigger : defaultTriggers)
         {
+#if defined(__APPLE__)
+            migrateLegacyMacOSTrigger(state, it.first->second.Id, trigger);
+#endif
             auto it = state.Triggers.find(trigger);
             if(it == state.Triggers.end())
             {

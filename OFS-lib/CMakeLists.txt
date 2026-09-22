@@ -48,7 +48,77 @@ set(OFS_LIB_SOURCES
 	"localization/OFS_Localization.cpp"
 )
 
+if(APPLE)
+	list(APPEND OFS_LIB_SOURCES "OFS_MacOS.mm")
+endif()
+
 add_library(${PROJECT_NAME} STATIC ${OFS_LIB_SOURCES})
+
+if(APPLE)
+	# AppleClang rejects the pinned sol2 optional<T&>::emplace overload because
+	# its forwarding implementation is not valid for a reference specialization.
+	# Keep the original sol2 pin and patch only this header in the build tree.
+	set(OFS_SOL2_OPTIONAL_SOURCE
+		"${CMAKE_SOURCE_DIR}/lib/sol2/include/sol/optional_implementation.hpp")
+	set(OFS_SOL2_COMPAT_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/sol2-compat")
+	set(OFS_SOL2_OPTIONAL_COMPAT_HEADER
+		"${OFS_SOL2_COMPAT_INCLUDE_DIR}/sol/optional_implementation.hpp")
+
+	if(NOT EXISTS "${OFS_SOL2_OPTIONAL_SOURCE}")
+		message(FATAL_ERROR
+			"Pinned sol2 optional implementation was not found: ${OFS_SOL2_OPTIONAL_SOURCE}")
+	endif()
+
+	file(READ "${OFS_SOL2_OPTIONAL_SOURCE}" OFS_SOL2_OPTIONAL_CONTENT)
+	set(OFS_SOL2_OPTIONAL_OLD_SNIPPET [=[
+		template <class... Args>
+		T& emplace(Args&&... args) noexcept {
+			static_assert(std::is_constructible<T, Args&&...>::value, "T must be constructible with Args");
+
+			*this = nullopt;
+			this->construct(std::forward<Args>(args)...);
+		}
+]=])
+	set(OFS_SOL2_OPTIONAL_NEW_SNIPPET [=[
+		T& emplace(T& arg) noexcept {
+			*this = nullopt;
+			m_value = &arg;
+			return **this;
+		}
+]=])
+
+	string(FIND "${OFS_SOL2_OPTIONAL_CONTENT}" "${OFS_SOL2_OPTIONAL_OLD_SNIPPET}"
+		OFS_SOL2_OPTIONAL_PATCH_OFFSET)
+	if(OFS_SOL2_OPTIONAL_PATCH_OFFSET EQUAL -1)
+		message(FATAL_ERROR
+			"Pinned sol2 optional<T&>::emplace snippet was not found in ${OFS_SOL2_OPTIONAL_SOURCE}; refusing to patch an unknown version")
+	endif()
+
+	string(LENGTH "${OFS_SOL2_OPTIONAL_OLD_SNIPPET}" OFS_SOL2_OPTIONAL_PATCH_LENGTH)
+	math(EXPR OFS_SOL2_OPTIONAL_PATCH_TAIL_OFFSET
+		"${OFS_SOL2_OPTIONAL_PATCH_OFFSET} + ${OFS_SOL2_OPTIONAL_PATCH_LENGTH}")
+	string(SUBSTRING "${OFS_SOL2_OPTIONAL_CONTENT}" 0
+		"${OFS_SOL2_OPTIONAL_PATCH_OFFSET}" OFS_SOL2_OPTIONAL_PATCH_PREFIX)
+	string(SUBSTRING "${OFS_SOL2_OPTIONAL_CONTENT}" "${OFS_SOL2_OPTIONAL_PATCH_TAIL_OFFSET}" -1
+		OFS_SOL2_OPTIONAL_PATCH_SUFFIX)
+	string(FIND "${OFS_SOL2_OPTIONAL_PATCH_SUFFIX}" "${OFS_SOL2_OPTIONAL_OLD_SNIPPET}"
+		OFS_SOL2_OPTIONAL_SECOND_PATCH_OFFSET)
+	if(OFS_SOL2_OPTIONAL_SECOND_PATCH_OFFSET GREATER -1)
+		message(FATAL_ERROR
+			"Pinned sol2 optional<T&>::emplace snippet occurs more than once in ${OFS_SOL2_OPTIONAL_SOURCE}; refusing an ambiguous patch")
+	endif()
+
+	file(MAKE_DIRECTORY "${OFS_SOL2_COMPAT_INCLUDE_DIR}/sol")
+	file(WRITE "${OFS_SOL2_OPTIONAL_COMPAT_HEADER}"
+		"${OFS_SOL2_OPTIONAL_PATCH_PREFIX}${OFS_SOL2_OPTIONAL_NEW_SNIPPET}${OFS_SOL2_OPTIONAL_PATCH_SUFFIX}")
+	if(NOT TARGET sol2)
+		message(FATAL_ERROR "The sol2 target is required for the macOS compatibility shim")
+	endif()
+	target_include_directories(sol2 BEFORE INTERFACE
+		"$<BUILD_INTERFACE:${OFS_SOL2_COMPAT_INCLUDE_DIR}>")
+	message(STATUS "Using generated macOS sol2 optional<T&>::emplace compatibility header")
+endif()
+
 target_include_directories(${PROJECT_NAME} PUBLIC
 	"${PROJECT_SOURCE_DIR}/event/"
 	"${PROJECT_SOURCE_DIR}/Funscript/"
@@ -138,18 +208,55 @@ elseif(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
 	# instead libmpv.so.1 is loaded at runtime
 	# this avoids linking issues with mpv and lua symbols
 elseif(APPLE)
-	execute_process(
-		COMMAND brew --prefix mpv
-		RESULT_VARIABLE BREW_MPV
-		OUTPUT_VARIABLE BREW_MPV_PREFIX
-		OUTPUT_STRIP_TRAILING_WHITESPACE
+	# libmpv is loaded at runtime. The headers are required to compile, while
+	# an optional discovered dylib path is passed to the runtime loader.
+	set(OFS_MPV_ROOT "" CACHE PATH "Root directory of a libmpv installation")
+
+	find_path(MPV_INCLUDE_DIR
+		NAMES mpv/client.h
+		DOC "Directory containing mpv/client.h"
+		HINTS
+			"${OFS_MPV_ROOT}/include"
+			"/opt/homebrew/include"
+			"/usr/local/include"
+			"${CMAKE_SOURCE_DIR}/lib/libmpv/include"
+		PATH_SUFFIXES include
 	)
-	if (BREW_MPV EQUAL 0 AND EXISTS "${BREW_MPV_PREFIX}")
-		message(STATUS "Found mpv installed by Homebrew at ${BREW_MPV_PREFIX}")
-		set(MPV_INCLUDE "${BREW_MPV_PREFIX}/include")
-		set(MPV_LIB "${BREW_MPV_PREFIX}/lib")
+	if (NOT MPV_INCLUDE_DIR)
+		message(FATAL_ERROR "libmpv headers were not found. Set MPV_INCLUDE_DIR or OFS_MPV_ROOT.")
+	endif()
+
+	find_file(MPV_LIBRARY
+		NAMES libmpv.dylib
+		DOC "Path to the libmpv dylib"
+		HINTS
+			"${OFS_MPV_ROOT}/lib"
+			"${OFS_MPV_ROOT}/opt/mpv/lib"
+			"/opt/homebrew/lib"
+			"/opt/homebrew/opt/mpv/lib"
+			"/usr/local/lib"
+			"/usr/local/opt/mpv/lib"
+		PATH_SUFFIXES lib
+	)
+	if (MPV_LIBRARY)
+		message(STATUS "Found libmpv at ${MPV_LIBRARY}")
+		# Keep the discovered path available to sibling directories. The runtime
+		# loader still receives the developer path as a fallback, while src/ uses
+		# this value as the seed for the optional app-bundle dependency graph.
+		set(OFS_MPV_LIBRARY "${MPV_LIBRARY}" CACHE INTERNAL
+			"Discovered macOS libmpv dylib used for optional app bundling" FORCE)
+		target_compile_definitions(${PROJECT_NAME} PUBLIC
+			"OFS_MPV_LIBRARY_PATH=\"${MPV_LIBRARY}\""
+		)
+	else()
+		message(STATUS "libmpv dylib not found at configure time; runtime fallback paths will be tried")
+		set(OFS_MPV_LIBRARY "" CACHE INTERNAL
+			"Discovered macOS libmpv dylib used for optional app bundling" FORCE)
 	endif()
 	target_include_directories(${PROJECT_NAME} PUBLIC
-		"${MPV_INCLUDE}"
+		"${MPV_INCLUDE_DIR}"
 	)
+
+	find_library(OFS_APPKIT_FRAMEWORK AppKit REQUIRED)
+	target_link_libraries(${PROJECT_NAME} PUBLIC "${OFS_APPKIT_FRAMEWORK}")
 endif()

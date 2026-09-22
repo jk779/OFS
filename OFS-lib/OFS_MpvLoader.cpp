@@ -40,7 +40,25 @@ bool OFS_MpvLoader::Load() noexcept
 #if defined(WIN32)
     mpvHandle = SDL_LoadObject("mpv-2.dll");
 #elif defined(__APPLE__)
-    mpvHandle = SDL_LoadObject("libmpv.dylib");
+    const char* mpvPaths[] = {
+        "@executable_path/../Frameworks/libmpv.dylib",
+#ifdef OFS_MPV_LIBRARY_PATH
+        OFS_MPV_LIBRARY_PATH,
+#endif
+        "libmpv.dylib",
+        "/opt/homebrew/opt/mpv/lib/libmpv.dylib",
+        "/opt/homebrew/lib/libmpv.dylib",
+        "/usr/local/opt/mpv/lib/libmpv.dylib",
+        "/usr/local/lib/libmpv.dylib",
+    };
+    for (const auto* path : mpvPaths) {
+        if (path[0] != '\0') {
+            mpvHandle = SDL_LoadObject(path);
+            if (mpvHandle) {
+                break;
+            }
+        }
+    }
 #else // linux
     mpvHandle = SDL_LoadObject("libmpv.so.2");
     if (!mpvHandle) {

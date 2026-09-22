@@ -7,14 +7,59 @@ The project is based on OpenGL, SDL2, ImGui, libmpv, & all these other great [li
 ### How to build ( for people who want to contribute or fork )
 1. Clone the repository
 2. `cd "OpenFunscripter"`
-3. `git submodule update --init`
+3. `git submodule update --init --recursive`
 4. Run CMake and compile
 
 Known linux dependencies to just compile are `build-essential libmpv-dev libglvnd-dev`.  
+
+### Native macOS (Apple Silicon)
+
+The native macOS build is verified for Apple Silicon (`arm64`). Intel and
+Universal builds are not currently verified.
+
+Required tools and libraries are:
+
+- Git with recursive submodule support
+- Xcode Command Line Tools (including AppleClang)
+- CMake 3.16 or newer
+- libmpv headers and the `libmpv.dylib` library
+
+The commands below use Homebrew's `mpv` package at `/opt/homebrew/opt/mpv` as
+the libmpv provider. This dependency is required only on the build machine.
+
+From the repository root, initialize the submodules and build the application:
+
+```sh
+git submodule update --init --recursive
+
+cmake -S . -B build/macos-arm64 -G "Unix Makefiles" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  -DHAVE_GCC_WERROR_DECLARATION_AFTER_STATEMENT=OFF \
+  -DOFS_MPV_ROOT=/opt/homebrew/opt/mpv \
+  -DOFS_BUNDLE_MACOS_LIBMPV=ON \
+  -DOFS_MACOS_ADHOC_SIGN=ON
+cmake --build build/macos-arm64 --config Release --parallel 4
+```
+
+The policy and declaration-warning options are compatibility settings for the
+bundled dependencies. `OFS_BUNDLE_MACOS_LIBMPV` copies libmpv and its
+non-system dylib dependencies into the application bundle and rewrites their
+load paths. A target Mac therefore does not need Homebrew installed.
+
+The generated application is `bin/OpenFunscripter.app`. The ad-hoc signature
+is suitable for local testing only; it is not Developer ID signing or
+notarization. Verify the resulting bundle with:
+
+```sh
+codesign --verify --deep --strict --verbose=2 bin/OpenFunscripter.app
+```
 
 ### Windows libmpv binaries used
 Currently using: [mpv-dev-x86_64-v3-20220925-git-56e24d5.7z (it's part of the repository)](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/)
 
 ### Platforms
 I'm providing windows binaries and a linux AppImage.
-In theory OSX should work as well but I lack the hardware to set any of that up.
+Native macOS builds are supported on Apple Silicon. The current documented
+procedure is not yet verified for Intel or Universal binaries.

@@ -8,6 +8,8 @@
 class VideoPreview {
 private:
 	std::unique_ptr<OFS_Videoplayer> player;
+	std::string videoPath;
+	bool videoOpened = false;
 public:
 	VideoPreview(bool hwAccel) noexcept;
 	~VideoPreview() noexcept;
@@ -15,8 +17,8 @@ public:
 	void Init() noexcept;
 	void Update(float delta) noexcept;
 
-	void SetPosition(float pos) noexcept;
-	void PreviewVideo(const std::string& path, float pos) noexcept;
+	void SetVideoPath(const std::string& path) noexcept;
+	void PreviewVideo(float pos) noexcept;
 	void Play() noexcept;
 	void Pause() noexcept;
 	void CloseVideo() noexcept;

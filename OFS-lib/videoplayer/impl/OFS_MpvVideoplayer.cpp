@@ -60,6 +60,10 @@ struct MpvPlayerContext
     SDL_atomic_t renderUpdate = {0};
     SDL_atomic_t hasEvents = {0};
 
+    bool fileLoadedEventReceived = false;
+    bool framebufferComplete = false;
+    int lastRenderError = 0;
+
     uint32_t* frameTexture = nullptr;
     float* logicalPosition = nullptr;
 
@@ -71,12 +75,25 @@ struct MpvPlayerContext
 
 static void OnMpvEvents(void* ctx) noexcept
 {
-    SDL_AtomicIncRef(&CTX->hasEvents);
+    // The wakeup callback is only a notification that work is available.  A
+    // counter can grow without bound while the main thread is busy and makes
+    // Update() repeatedly process the same queue.  Coalesce notifications;
+    // ProcessEvents() drains the queue in one pass on the main thread.
+    SDL_AtomicSet(&CTX->hasEvents, 1);
 }
 
 static void OnMpvRenderUpdate(void* ctx) noexcept
 {
-    SDL_AtomicIncRef(&CTX->renderUpdate);
+    // mpv's render callback is likewise a pending notification, not a frame
+    // counter.  The render API reports the current update flags when polled.
+    SDL_AtomicSet(&CTX->renderUpdate, 1);
+}
+
+inline static bool takePendingNotification(SDL_atomic_t& pending) noexcept
+{
+    // Clear with CAS so a callback racing with this operation leaves the flag
+    // set for the next Update() call instead of being lost.
+    return SDL_AtomicCAS(&pending, 1, 0) == SDL_TRUE;
 }
 
 inline static void notifyVideoLoaded(MpvPlayerContext* ctx) noexcept
@@ -106,6 +123,9 @@ inline static void notifyPlaybackSpeed(MpvPlayerContext* ctx) noexcept
 
 inline static void updateRenderTexture(MpvPlayerContext* ctx) noexcept
 {
+    GLint previousFramebuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+
     if (!ctx->framebuffer) {
 		glGenFramebuffers(1, &ctx->framebuffer);
 		glBindFramebuffer(GL_FRAMEBUFFER, ctx->framebuffer);
@@ -129,7 +149,9 @@ inline static void updateRenderTexture(MpvPlayerContext* ctx) noexcept
 		GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
 		glDrawBuffers(1, DrawBuffers); 
 
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		const GLenum framebufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		ctx->framebufferComplete = framebufferStatus == GL_FRAMEBUFFER_COMPLETE;
+		if (!ctx->framebufferComplete) {
 			LOG_ERROR("Failed to create framebuffer for video!");
 		}
 	}
@@ -137,7 +159,27 @@ inline static void updateRenderTexture(MpvPlayerContext* ctx) noexcept
 		// update size of render texture based on video resolution
 		glBindTexture(GL_TEXTURE_2D, *ctx->frameTexture);
 		glTexImage2D(GL_TEXTURE_2D, 0, OFS_InternalTexFormat, ctx->data.videoWidth, ctx->data.videoHeight, 0, OFS_TexFormat, GL_UNSIGNED_BYTE, 0);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, ctx->framebuffer);
+		const GLenum framebufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		ctx->framebufferComplete = framebufferStatus == GL_FRAMEBUFFER_COMPLETE;
+		if (!ctx->framebufferComplete) {
+			LOG_ERROR("Failed to resize framebuffer for video!");
+		}
 	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+}
+
+inline static void maybeNotifyVideoLoaded(MpvPlayerContext* ctx) noexcept
+{
+    if (ctx->data.videoLoaded || !ctx->fileLoadedEventReceived || ctx->data.filePath.empty() ||
+        ctx->data.videoWidth <= 0 || ctx->data.videoHeight <= 0 || !ctx->framebufferComplete) {
+        return;
+    }
+
+    ctx->data.videoLoaded = true;
+    notifyVideoLoaded(ctx);
 }
 
 inline static void showText(MpvPlayerContext* ctx, const char* text) noexcept
@@ -148,8 +190,12 @@ inline static void showText(MpvPlayerContext* ctx, const char* text) noexcept
 
 OFS_Videoplayer::~OFS_Videoplayer() noexcept
 {
-    mpv_render_context_free(CTX->mpvGL);
-	mpv_destroy(CTX->mpv);
+	if (CTX->mpvGL) {
+		mpv_render_context_free(CTX->mpvGL);
+	}
+	if (CTX->mpv) {
+		mpv_destroy(CTX->mpv);
+	}
     delete CTX;
     ctx = nullptr;
 }
@@ -182,6 +228,17 @@ bool OFS_Videoplayer::Init(bool hwAccel) noexcept
     }
 
     if(mpv_initialize(CTX->mpv) != 0) {
+        return false;
+    }
+
+    // The default video output is not stable across mpv releases. The render
+    // API requires the libmpv video output; otherwise mpv may open its own
+    // native window instead of rendering into our OpenGL framebuffer.
+    error = mpv_set_option_string(CTX->mpv, "vo", "libmpv");
+    if(error != 0) {
+        LOG_ERROR("Failed to set mpv: vo=libmpv");
+        mpv_destroy(CTX->mpv);
+        CTX->mpv = nullptr;
         return false;
     }
 
@@ -219,11 +276,12 @@ bool OFS_Videoplayer::Init(bool hwAccel) noexcept
         return SDL_GL_GetProcAddress(fnName);
     };
     
-    uint32_t enable = 1;
+	// OpenFunscripter performs regular mpv calls and render-context calls on
+	// the same main thread. Advanced control requires stricter threading
+	// guarantees and is not needed for this integration, so leave it disabled.
 	mpv_render_param renderParams[] = {
 		mpv_render_param{MPV_RENDER_PARAM_API_TYPE, (void*)MPV_RENDER_API_TYPE_OPENGL},
 		mpv_render_param{MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &init_params},
-		mpv_render_param{MPV_RENDER_PARAM_ADVANCED_CONTROL, &enable },
 		mpv_render_param{}
 	};
 
@@ -274,7 +332,8 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
             }
             case MPV_EVENT_FILE_LOADED:
             {
-                ctx->data.videoLoaded = true; 	
+                ctx->fileLoadedEventReceived = true;
+                maybeNotifyVideoLoaded(ctx);
                 continue;
             }
             case MPV_EVENT_PROPERTY_CHANGE:
@@ -292,7 +351,7 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
                         ctx->data.videoWidth = *(int64_t*)prop->data;
                         if (ctx->data.videoHeight > 0.f) {
                             updateRenderTexture(ctx);
-                            ctx->data.videoLoaded = true;
+                            maybeNotifyVideoLoaded(ctx);
                         }
                         break;
                     }
@@ -301,7 +360,7 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
                         ctx->data.videoHeight = *(int64_t*)prop->data;
                         if (ctx->data.videoWidth > 0.f) {
                             updateRenderTexture(ctx);
-                            ctx->data.videoLoaded = true;
+                            maybeNotifyVideoLoaded(ctx);
                         }
                         break;
                     }
@@ -345,9 +404,21 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
                         break;
                     }
                     case MpvFilePath:
-                        ctx->data.filePath = *((const char**)(prop->data));
-                        notifyVideoLoaded(ctx);
+                    {
+                        const char* path = *((const char**)(prop->data));
+                        ctx->data.filePath = path ? path : "";
+                        if (ctx->data.filePath.empty()) {
+                            ctx->data.videoLoaded = false;
+                            ctx->fileLoadedEventReceived = false;
+                            ctx->framebufferComplete = false;
+                            ctx->data.videoWidth = 0;
+                            ctx->data.videoHeight = 0;
+                        }
+                        else {
+                            maybeNotifyVideoLoaded(ctx);
+                        }
                         break;
+                    }
                 }
                 continue;
             }
@@ -357,6 +428,11 @@ inline static void ProcessEvents(MpvPlayerContext* ctx) noexcept
 
 inline static void RenderFrameToTexture(MpvPlayerContext* ctx) noexcept
 {
+    if (!ctx->mpvGL || !ctx->framebuffer || !ctx->framebufferComplete ||
+        ctx->data.videoWidth <= 0 || ctx->data.videoHeight <= 0) {
+        return;
+    }
+
     mpv_opengl_fbo fbo = {0};
 	fbo.fbo = ctx->framebuffer; 
 	fbo.w = ctx->data.videoWidth;
@@ -369,23 +445,29 @@ inline static void RenderFrameToTexture(MpvPlayerContext* ctx) noexcept
 		{MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &disable}, 
 		mpv_render_param{}
 	};
-	mpv_render_context_render(ctx->mpvGL, params);
+    GLint previousFramebuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, ctx->framebuffer);
+    const int renderError = mpv_render_context_render(ctx->mpvGL, params);
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+
+    if (renderError != 0 && renderError != ctx->lastRenderError) {
+        LOGF_ERROR("mpv_render_context_render failed with error %d", renderError);
+    }
+    ctx->lastRenderError = renderError;
 }
 
 void OFS_Videoplayer::Update(float delta) noexcept
 {
-    while(SDL_AtomicGet(&CTX->hasEvents) > 0) {
+    if (takePendingNotification(CTX->hasEvents)) {
         ProcessEvents(CTX);
-        SDL_AtomicDecRef(&CTX->hasEvents);
     }
 
-    while(SDL_AtomicGet(&CTX->renderUpdate) > 0)
-    {
+    if (takePendingNotification(CTX->renderUpdate)) {
         uint64_t flags = mpv_render_context_update(CTX->mpvGL);
 	    if (flags & MPV_RENDER_UPDATE_FRAME) {
             RenderFrameToTexture(CTX);
         }
-        SDL_AtomicDecRef(&CTX->renderUpdate);
     }
 }
 
@@ -432,6 +514,9 @@ void OFS_Videoplayer::OpenVideo(const std::string& path) noexcept
     newCache.currentSpeed = CTX->data.currentSpeed;
     newCache.paused = CTX->data.paused;
     CTX->data = newCache;
+    CTX->fileLoadedEventReceived = false;
+    CTX->framebufferComplete = false;
+    CTX->lastRenderError = 0;
 
     SetPaused(true);
     SetVolume(CTX->data.currentVolume);

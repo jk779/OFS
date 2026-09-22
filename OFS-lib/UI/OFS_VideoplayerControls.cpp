@@ -20,7 +20,10 @@ void OFS_VideoplayerControls::VideoLoaded(const VideoLoadedEvent* ev) noexcept
 {
     OFS_PROFILE(__FUNCTION__);
     if(ev->playerType != VideoplayerType::Main) return;
-    videoPreview->PreviewVideo(ev->videoPath, 0.f);
+    // The preview is only needed for the timeline tooltip. Keep the path so
+    // it can be opened lazily when the user actually hovers the timeline.
+    videoPreview->SetVideoPath(ev->videoPath);
+    lastPreviewUpdate = 0;
 }
 
 void OFS_VideoplayerControls::Init(OFS_Videoplayer* player, bool hwAccel) noexcept
@@ -115,8 +118,8 @@ bool OFS_VideoplayerControls::DrawTimelineWidget(const char* label, float* posit
         if(ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
         {
             if (SDL_GetTicks() - lastPreviewUpdate >= PreviewUpdateMs) {
+                videoPreview->PreviewVideo(relTimelinePos);
                 videoPreview->Play();
-                videoPreview->SetPosition(relTimelinePos);
                 lastPreviewUpdate = SDL_GetTicks();
             }
             ImGui::BeginTooltipEx(ImGuiWindowFlags_None, ImGuiTooltipFlags_None);

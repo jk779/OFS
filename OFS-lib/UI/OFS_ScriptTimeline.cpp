@@ -11,6 +11,7 @@
 #include "OFS_Shader.h"
 #include "OFS_GL.h"
 #include "OFS_EventSystem.h"
+#include "OFS_Platform.h"
 
 #include "state/states/BaseOverlayState.h"
 #include "state/states/WaveformState.h"
@@ -413,7 +414,7 @@ void ScriptTimeline::ShowScriptPositions(
 		else if(IsSelecting && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 		{
 			IsSelecting = false;
-			bool clearSelection = !(SDL_GetModState() & KMOD_CTRL);
+			bool clearSelection = !OFS_Platform::IsPrimaryModifierDown();
 			updateSelection(drawingCtx, clearSelection);
 		}
 		else if(IsMovingIdx < 0 && ItemIsHovered)

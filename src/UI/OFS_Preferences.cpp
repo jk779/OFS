@@ -20,7 +20,7 @@ OFS_Preferences::OFS_Preferences() noexcept
 
 static void copyTranslationHelper() noexcept
 {
-	auto srcDir = Util::Basepath() / "data" / OFS_Translator::TranslationDir;
+	auto srcDir = Util::PathFromString(Util::Resource(OFS_Translator::TranslationDir));
 	auto targetDir = Util::Prefpath(OFS_Translator::TranslationDir);
 	std::error_code ec;
 	std::filesystem::directory_iterator langDirIt(srcDir, ec);

@@ -8,6 +8,7 @@
 #include "OFS_Shader.h"
 #include "OFS_MpvLoader.h"
 #include "OFS_Localization.h"
+#include "OFS_Platform.h"
 
 #include "state/OpenFunscripterState.h"
 #include "state/states/VideoplayerWindowState.h"
@@ -43,6 +44,13 @@ static constexpr int DefaultWidth = 1920;
 static constexpr int DefaultHeight = 1080;
 
 static constexpr int AutoBackupIntervalSeconds = 60;
+
+#if defined(__APPLE__)
+static constexpr const char* ApplicationWindowTitle = OFS_MACOS_DISPLAY_TITLE;
+#else
+static constexpr const char* ApplicationWindowTitle =
+    "OpenFunscripter " OFS_LATEST_GIT_TAG "@" OFS_LATEST_GIT_HASH;
+#endif
 
 bool OpenFunscripter::imguiSetup() noexcept
 {
@@ -176,7 +184,7 @@ bool OpenFunscripter::Init(int argc, char* argv[])
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     window = SDL_CreateWindow(
-        "OpenFunscripter " OFS_LATEST_GIT_TAG "@" OFS_LATEST_GIT_HASH,
+        ApplicationWindowTitle,
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         DefaultWidth, DefaultHeight,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_HIDDEN);
@@ -446,7 +454,7 @@ void OpenFunscripter::registerBindings()
                 [this]() { saveProject(); } },
             Tr::ACTION_SAVE_PROJECT, "Core",
             {
-                { ImGuiMod_Ctrl, ImGuiKey_S },
+                { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_S },
             });
 
         keys->RegisterAction(
@@ -454,7 +462,7 @@ void OpenFunscripter::registerBindings()
                 [this]() { quickExport(); } },
             Tr::ACTION_QUICK_EXPORT, "Core",
             {
-                { ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiKey_S },
+                { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Shift, ImGuiKey_S },
             });
 
         keys->RegisterAction(
@@ -556,7 +564,7 @@ void OpenFunscripter::registerBindings()
                 false },
             Tr::ACTION_PREVIOUS_ACTION_MULTI, "Navigation",
             {
-                { ImGuiMod_Ctrl, ImGuiKey_DownArrow, true },
+                { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_DownArrow, true },
             });
 
         keys->RegisterAction(
@@ -582,7 +590,7 @@ void OpenFunscripter::registerBindings()
                 false },
             Tr::ACTION_NEXT_ACTION_MULTI, "Navigation",
             {
-                { ImGuiMod_Ctrl, ImGuiKey_UpArrow, true },
+                { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_UpArrow, true },
             });
 
         // FRAME CONTROL
@@ -622,7 +630,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_FAST_STEP, "Navigation",
-            { { ImGuiMod_Ctrl, ImGuiKey_RightArrow, true } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_RightArrow, true } });
 
         keys->RegisterAction(
             { "fast_backstep",
@@ -632,7 +640,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_FAST_BACKSTEP, "Navigation",
-            { { ImGuiMod_Ctrl, ImGuiKey_LeftArrow, true } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_LeftArrow, true } });
     }
 
     keys->RegisterGroup("Utility", Tr::UTILITY_BINDING_GROUP);
@@ -645,7 +653,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_UNDO, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_Z, true } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_Z, true } });
 
         keys->RegisterAction(
             { "redo",
@@ -654,7 +662,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_REDO, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_Y, true } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_Y, true } });
 
         // COPY / PASTE
         keys->RegisterAction(
@@ -664,7 +672,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_COPY, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_C } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_C } });
 
         keys->RegisterAction(
             { "paste",
@@ -673,7 +681,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_PASTE, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_V } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_V } });
 
         keys->RegisterAction(
             { "paste_exact",
@@ -682,7 +690,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_PASTE_EXACT, "Utility",
-            { { ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiKey_V } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Shift, ImGuiKey_V } });
 
         keys->RegisterAction(
             { "cut",
@@ -691,7 +699,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_CUT, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_X } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_X } });
 
         keys->RegisterAction(
             { "select_all",
@@ -700,7 +708,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_SELECT_ALL, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_A } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_A } });
 
         keys->RegisterAction(
             { "deselect_all",
@@ -709,7 +717,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_DESELECT_ALL, "Utility",
-            { { ImGuiMod_Ctrl, ImGuiKey_D } });
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_D } });
 
         keys->RegisterAction(
             { "select_all_left",
@@ -718,7 +726,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_SELECT_ALL_LEFT, "Utility",
-            { { ImGuiMod_Ctrl | ImGuiMod_Alt, ImGuiKey_LeftArrow } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Alt, ImGuiKey_LeftArrow } });
 
         keys->RegisterAction(
             { "select_all_right",
@@ -727,7 +735,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_SELECT_ALL_RIGHT, "Utility",
-            { { ImGuiMod_Ctrl | ImGuiMod_Alt, ImGuiKey_RightArrow } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Alt, ImGuiKey_RightArrow } });
 
         keys->RegisterAction(
             { "select_top_points",
@@ -936,7 +944,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_MOVE_ACTIONS_LEFT_SNAP, "Moving",
-            { { ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiKey_LeftArrow, true } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Shift, ImGuiKey_LeftArrow, true } });
 
         keys->RegisterAction(
             { "move_actions_right_snapped",
@@ -945,7 +953,7 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_MOVE_ACTIONS_RIGHT_SNAP, "Moving",
-            { { ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiKey_RightArrow, true } });
+            { { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Shift, ImGuiKey_RightArrow, true } });
 
         keys->RegisterAction(
             { "move_actions_left",
@@ -1290,8 +1298,14 @@ void OpenFunscripter::render() noexcept
 
         SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
     }
+#if defined(__APPLE__)
+    // SDL_GL_SwapWindow flushes the double-buffered context.  A blocking
+    // glFinish here needlessly stalls the CPU/GPU pipeline on macOS and is
+    // especially noticeable while dragging UI controls.
+#else
     glFlush();
     glFinish();
+#endif
 }
 
 void OpenFunscripter::processEvents() noexcept
@@ -1378,7 +1392,7 @@ void OpenFunscripter::FunscriptChanged(const FunscriptActionsChangedEvent* ev) n
 
 void OpenFunscripter::ScriptTimelineActionClicked(const FunscriptActionClickedEvent* ev) noexcept
 {
-    if (SDL_GetModState() & KMOD_CTRL) {
+    if (OFS_Platform::IsPrimaryModifierDown()) {
         if (auto script = ev->script.lock()) {
             script->SelectAction(ev->action);
         }
@@ -1427,6 +1441,7 @@ void OpenFunscripter::DragNDrop(const OFS_SDL_Event* ev) noexcept
 
 void OpenFunscripter::VideoDuration(const DurationChangeEvent* ev) noexcept
 {
+    if (ev->playerType != VideoplayerType::Main) return;
     auto& projectState = LoadedProject->State();
     projectState.metadata.duration = player->Duration();
     player->SetPositionExact(projectState.lastPlayerPosition);
@@ -1702,6 +1717,34 @@ int OpenFunscripter::Run() noexcept
         const float minFrameTime = (float)PerfFreq / frameLimit;
 
         int32_t sleepMs = ((minFrameTime - (float)(FrameEnd - FrameStart)) / minFrameTime) * (1000.f / frameLimit);
+
+#if defined(__APPLE__)
+        if (!prefState.vsync) {
+            // Keep the final sub-millisecond part precise, but let the
+            // scheduler sleep for the rest of the frame.  The old path
+            // routinely busy-waited for several milliseconds at 150 Hz,
+            // which made the UI consume a full core and feel sluggish.
+            const uint64_t frameDeadline = FrameStart + static_cast<uint64_t>(minFrameTime);
+            for (;;) {
+                FrameEnd = SDL_GetPerformanceCounter();
+                if (FrameEnd >= frameDeadline) {
+                    break;
+                }
+
+                const uint64_t remaining = frameDeadline - FrameEnd;
+                const uint64_t remainingMs = (remaining * 1000) / PerfFreq;
+                if (remainingMs > 0) {
+                    SDL_Delay(static_cast<Uint32>(remainingMs));
+                }
+                else {
+                    OFS_PAUSE_INTRIN();
+                }
+            }
+        }
+        else if (sleepMs > 0) {
+            SDL_Delay(sleepMs);
+        }
+#else
         if (!IdleMode) sleepMs -= 1;
         if (sleepMs > 0) SDL_Delay(sleepMs);
 
@@ -1712,6 +1755,7 @@ int OpenFunscripter::Run() noexcept
                 FrameEnd = SDL_GetPerformanceCounter();
             }
         }
+#endif
 
         if (SDL_GetTicks() - IdleTimer > 3000) {
             setIdle(true);
@@ -1843,6 +1887,14 @@ void OpenFunscripter::UpdateNewActiveScript(uint32_t activeIndex) noexcept
 
 void OpenFunscripter::updateTitle() noexcept
 {
+#if defined(__APPLE__)
+    const char* title = ApplicationWindowTitle;
+    if (LoadedProject->IsValid()) {
+        title = Util::Format("%s - \"%s\"",
+            ApplicationWindowTitle,
+            LoadedProject->Path().c_str());
+    }
+#else
     const char* title = "OFS";
     if (LoadedProject->IsValid()) {
         title = Util::Format("OpenFunscripter %s@%s - \"%s\"",
@@ -1855,6 +1907,7 @@ void OpenFunscripter::updateTitle() noexcept
             OFS_LATEST_GIT_TAG,
             OFS_LATEST_GIT_HASH);
     }
+#endif
     SDL_SetWindowTitle(window, title);
 }
 

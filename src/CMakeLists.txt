@@ -47,17 +47,62 @@ else()
 	add_executable(${PROJECT_NAME} ${OPEN_FUNSCRIPTER_SOURCES})
 endif()
 
+if(APPLE)
+	set(OFS_MACOS_ICON "${CMAKE_SOURCE_DIR}/OpenFunscripter.icns")
+	set_source_files_properties("${OFS_MACOS_ICON}"
+		PROPERTIES
+			MACOSX_PACKAGE_LOCATION Resources)
+	target_sources(${PROJECT_NAME} PRIVATE "${OFS_MACOS_ICON}")
+	target_compile_definitions(${PROJECT_NAME} PRIVATE
+		"OFS_MACOS_DISPLAY_TITLE=\"OpenFunscripter v3.2.0 — macOS v1.0\"")
+
+	set_target_properties(${PROJECT_NAME} PROPERTIES
+		MACOSX_BUNDLE_BUNDLE_NAME "OpenFunscripter"
+		MACOSX_BUNDLE_GUI_IDENTIFIER "com.openfunscripter.OFS"
+		MACOSX_BUNDLE_BUNDLE_VERSION "320.1"
+		MACOSX_BUNDLE_SHORT_VERSION_STRING "3.2.0"
+		MACOSX_BUNDLE_INFO_STRING "OpenFunscripter v3.2.0 — macOS v1.0"
+		MACOSX_BUNDLE_ICON_FILE "OpenFunscripter.icns"
+	)
+endif()
+
 target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR})
 
 # copy data directory
 if(APPLE)
-	add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
+	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+						COMMAND ${CMAKE_COMMAND} -E make_directory
+						"$<TARGET_FILE_DIR:${PROJECT_NAME}>/../Resources"
 						COMMAND ${CMAKE_COMMAND} -E copy_directory
 						"${CMAKE_SOURCE_DIR}/data/" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/../Resources/data")
 else()
 	add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
 						COMMAND ${CMAKE_COMMAND} -E copy_directory
 						"${CMAKE_SOURCE_DIR}/data/" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/data")
+endif()
+
+if(APPLE)
+	if(OFS_BUNDLE_MACOS_LIBMPV AND NOT OFS_MPV_LIBRARY)
+		message(FATAL_ERROR
+			"OFS_BUNDLE_MACOS_LIBMPV is enabled, but no libmpv.dylib was discovered. "
+			"Set OFS_MPV_ROOT or disable OFS_BUNDLE_MACOS_LIBMPV.")
+	endif()
+
+	# This is intentionally an always-run target. The Homebrew dependency graph
+	# and the existing app bundle are external to CMake's timestamp graph, so a
+	# stamp can leave stale dylibs or an old Frameworks rpath behind.
+	add_custom_target(OFS_macos_bundle_libmpv ALL
+		COMMAND ${CMAKE_COMMAND}
+			"-DOFS_APP_EXECUTABLE=$<TARGET_FILE:${PROJECT_NAME}>"
+			"-DOFS_BUNDLE_ENABLED=${OFS_BUNDLE_MACOS_LIBMPV}"
+			"-DOFS_MPV_LIBRARY=${OFS_MPV_LIBRARY}"
+			"-DOFS_ADHOC_SIGN=${OFS_MACOS_ADHOC_SIGN}"
+			-P "${CMAKE_SOURCE_DIR}/cmake/BundleMacOSDependencies.cmake"
+		DEPENDS
+			${PROJECT_NAME}
+			"${CMAKE_SOURCE_DIR}/cmake/BundleMacOSDependencies.cmake"
+		VERBATIM)
+	add_dependencies(OFS_macos_bundle_libmpv ${PROJECT_NAME})
 endif()
 
 
