@@ -56,6 +56,54 @@ notarization. Verify the resulting bundle with:
 codesign --verify --deep --strict --verbose=2 bin/OpenFunscripter.app
 ```
 
+### macOS Developer ID release and notarization
+
+Configure with the preceding native macOS `cmake -S` command, keeping
+`-DOFS_BUNDLE_MACOS_LIBMPV=ON` but replacing `-DOFS_MACOS_ADHOC_SIGN=ON` with
+`-DOFS_MACOS_ADHOC_SIGN=OFF`. Then replace the placeholders below and run:
+
+```sh
+ROOT="$(pwd)"; APP="$ROOT/bin/OpenFunscripter.app"; FRAMEWORKS="$APP/Contents/Frameworks"
+RELEASE_DIR="$ROOT/release/macos-arm64"; ENTITLEMENTS="$ROOT/cmake/OpenFunscripter.entitlements.plist"; SIGNING_IDENTITY="<DEVELOPER_ID_APPLICATION_CERT_SHA1>"; NOTARY_PROFILE="<NOTARYTOOL_KEYCHAIN_PROFILE>"
+PRE_NOTARY_ZIP="$RELEASE_DIR/OpenFunscripter-macos-arm64-pre-notarization.zip"; FINAL_ZIP="$RELEASE_DIR/OpenFunscripter-macos-arm64-notarized.zip"
+
+security find-identity -v -p codesigning
+cmake --build build/macos-arm64 --config Release --parallel 4
+mkdir -p "$RELEASE_DIR"
+find "$FRAMEWORKS" -depth -type f -name '*.dylib' -print0 |
+while IFS= read -r -d '' dylib; do
+  file "$dylib" | grep -q 'Mach-O' && \
+    codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$dylib"
+done
+codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGNING_IDENTITY" "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
+ditto -c -k --keepParent "$APP" "$PRE_NOTARY_ZIP"
+xcrun notarytool submit "$PRE_NOTARY_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+```
+
+The `find -depth` loop signs nested Mach-O dylibs inside-out. Sign the outer
+app without `codesign --deep`; never use `--deep` for signing. The outer app
+uses the checked-in LuaJIT compatibility entitlement; nested dylibs receive no
+entitlements. If rejected, run
+`xcrun notarytool log <SUBMISSION_ID> --keychain-profile "$NOTARY_PROFILE"`
+before changing or re-signing. On `Accepted`:
+
+```sh
+xcrun stapler staple "$APP"
+xcrun stapler validate "$APP"
+spctl --assess --type execute --verbose=4 "$APP"  # expect source=Notarized Developer ID
+ditto -c -k --keepParent "$APP" "$FINAL_ZIP"
+shasum -a 256 "$FINAL_ZIP"
+```
+
+Staple before the final ZIP. An existing Keychain profile can be used directly;
+otherwise create it once. notarytool prompts for the password, which must not
+be put in the repository or shell history:
+
+```sh
+xcrun notarytool store-credentials "$NOTARY_PROFILE" --apple-id "<APPLE_ID>" --team-id "<TEAM_ID>"
+```
+
 ### Windows libmpv binaries used
 Currently using: [mpv-dev-x86_64-v3-20220925-git-56e24d5.7z (it's part of the repository)](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/)
 

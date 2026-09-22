@@ -36,6 +36,28 @@ Verify a local bundle with:
 codesign --verify --deep --strict --verbose=2 bin/OpenFunscripter.app
 ```
 
+## Developer ID release invariants
+
+- Use a clean Release build with `OFS_BUNDLE_MACOS_LIBMPV=ON` and
+  `OFS_MACOS_ADHOC_SIGN=OFF`; build before signing.
+- Sign every nested Mach-O dylib inside `Contents/Frameworks` inside-out with
+  `--force --options runtime --timestamp`, then sign the outer `.app` without
+  `--deep`. Sign the outer app with
+  `cmake/OpenFunscripter.entitlements.plist`; it contains only
+  `com.apple.security.cs.allow-unsigned-executable-memory` for the bundled
+  LuaJIT runtime. Nested dylibs receive no entitlements. Verify nested
+  signatures and the app with strict/deep verification.
+- The macOS bundle identifier is `io.github.jk779.OpenFunscripter`; keep the
+  visible app name and release artifact filenames unchanged.
+- Use a Developer ID identity selected from `security find-identity`; keep all
+  identity, Apple ID, team, and notary profile values as local placeholders.
+- Create a pre-notarization archive with `ditto --keepParent`, then submit it
+  with `xcrun notarytool submit ... --keychain-profile ... --wait`; never store
+  credentials in the repository or command history. Review `notarytool log`
+  before any change after a rejection.
+- After `Accepted`, staple and validate the app, check `spctl` for
+  `source=Notarized Developer ID`, and only then create and hash the final ZIP.
+
 ## Maintenance invariants
 
 - The checked-in `OpenFunscripter.icns` is the application icon; the build does
