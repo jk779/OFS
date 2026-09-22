@@ -48,6 +48,9 @@ private:
 #endif
     bool DebugMetrics = false;
     bool ShowAbout = false;
+    bool ShowHeatmapSettings = false;
+    int HeatmapSettingsWidth = 2000;
+    int HeatmapSettingsHeight = 50;
     bool IdleMode = false;
     uint32_t IdleTimer = 0;
 
@@ -128,7 +131,84 @@ private:
     void ShowAboutWindow(bool* open) noexcept;
     void ShowStatisticsWindow(bool* open) noexcept;
     void ShowMainMenuBar() noexcept;
+    void ShowHeatmapSettingsWindow() noexcept;
     bool ShowMetadataEditorWindow(bool* open) noexcept;
+
+#if defined(__APPLE__)
+public:
+    enum class MacMenuCommand : int {
+        About,
+        Preferences,
+        Quit,
+        Open,
+        CloseProject,
+        OpenRecent,
+        ClearRecent,
+        SaveProject,
+        QuickExport,
+        ExportActiveScript,
+        ExportAll,
+        ToggleAutoBackup,
+        OpenBackupDirectory,
+        ConfigureProject,
+        PickDifferentMedia,
+        AddShortcut,
+        AddNewScript,
+        AddExistingScripts,
+        RemoveScript,
+        SaveFrameAsImage,
+        OpenScreenshotDirectory,
+        HeatmapSettings,
+        SaveHeatmap,
+        SaveHeatmapWithChapters,
+        Undo,
+        Redo,
+        Cut,
+        Copy,
+        Paste,
+        SelectAll,
+        DeselectAll,
+        SelectAllLeft,
+        SelectAllRight,
+        SetSelectionStart,
+        SetSelectionEnd,
+        SelectTopPoints,
+        SelectMiddlePoints,
+        SelectBottomPoints,
+        Equalize,
+        Invert,
+        Isolate,
+        ResetLayout,
+        ToggleStatistics,
+        ToggleHistory,
+        ToggleSimulator,
+        ToggleMetadata,
+        ToggleActionEditor,
+        ToggleSpecialFunctions,
+        ToggleWebsocketApi,
+        ToggleChapters,
+        ToggleVideo,
+        ResetVideoPosition,
+        SetVideoMode,
+        ToggleMetrics,
+        ToggleDebugLog,
+        ToggleImGuiDemo,
+        ShowKeys,
+        ToggleFullscreen,
+        ToggleExtensionDevMode,
+        ToggleExtensionLogs,
+        OpenExtensionDirectory,
+        ToggleExtension,
+        ToggleExtensionWindow,
+        OpenSpecificExtensionDirectory,
+    };
+
+private:
+    uint32_t LastExtensionMenuRefresh = 0;
+    int32_t MacSelectionPoint = -1;
+    void UpdateMacOSMenu() noexcept;
+    void HandleMacOSMenuAction(int command, int context) noexcept;
+#endif
 
 public:
     static OpenFunscripter* ptr;

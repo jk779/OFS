@@ -598,7 +598,8 @@ void OFS_VideoplayerControls::DrawTimeline() noexcept
     ImGui::End();
 }
 
-void OFS_VideoplayerControls::DrawControls() noexcept
+void OFS_VideoplayerControls::DrawControls(const char* statusText, const char* statusTooltip,
+    bool idle, const char* idleTooltip) noexcept
 {
     OFS_PROFILE(__FUNCTION__);
     FUN_ASSERT(player != nullptr, "nullptr");
@@ -657,6 +658,33 @@ void OFS_VideoplayerControls::DrawControls() noexcept
         }
     }
     ImGui::NextColumn();
+    ImGui::Columns(1);
+
+    if (statusText != nullptr || idle) {
+        std::string status;
+        if (statusText != nullptr) {
+            status = statusText;
+        }
+        if (idle) {
+            if (!status.empty()) {
+                status += "   ";
+            }
+            status += ICON_LEAF;
+        }
+
+        ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize(status.c_str()).x);
+        ImGui::TextDisabled("%s", status.c_str());
+        if (ImGui::IsItemHovered()) {
+            if (statusText != nullptr && statusTooltip != nullptr) {
+                ImGui::SetTooltip("%s%s%s", statusTooltip,
+                    idle && idleTooltip != nullptr ? "\n" : "",
+                    idle && idleTooltip != nullptr ? idleTooltip : "");
+            }
+            else if (idle && idleTooltip != nullptr) {
+                ImGui::SetTooltip("%s", idleTooltip);
+            }
+        }
+    }
     ImGui::End();
 }
 

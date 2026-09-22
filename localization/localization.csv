@@ -324,6 +324,10 @@ EDIT,Edit,Edit
 SAVE_FRAME_AS_IMAGE,Save frame as image,Save frame as image
 OPEN_SCREENSHOT_DIR,Open screenshot directory,Open screenshot directory
 SAVE_HEATMAP,Save heatmap,Save heatmap
+HEATMAP_SETTINGS,Heatmap settings...,Heatmap settings...
+HEIGHT,Height,Height
+APPLY,Apply,Apply
+CANCEL,Cancel,Cancel
 UNDO,Undo,Undo
 REDO,Redo,Redo
 CUT,Cut,Cut
@@ -366,6 +370,7 @@ FULLSCREEN,Fullscreen,Fullscreen
 PREFERENCES,Preferences,Preferences
 REPEAT_RATE,Repeat rate,Repeat rate
 CONTROLLER_CONNECTED,Controller connected!,Controller connected!
+IDLE_MODE_TOOLTIP,Idle mode reduces rendering while the player is inactive.,Idle mode reduces rendering while the player is inactive.
 EXTENSIONS_MENU,Extensions,Extensions
 DEV_MODE,Developer mode,Developer mode
 SHOW_LOGS,Show logs,Show logs
