@@ -27,26 +27,21 @@ Required tools and libraries are:
 The commands below use Homebrew's `mpv` package at `/opt/homebrew/opt/mpv` as
 the libmpv provider. This dependency is required only on the build machine.
 
-From the repository root, initialize the submodules and build the application:
+From the repository root, initialize the submodules and build the application
+with the root Makefile:
 
 ```sh
 git submodule update --init --recursive
-
-cmake -S . -B build/macos-arm64 -G "Unix Makefiles" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_OSX_ARCHITECTURES=arm64 \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-  -DHAVE_GCC_WERROR_DECLARATION_AFTER_STATEMENT=OFF \
-  -DOFS_MPV_ROOT=/opt/homebrew/opt/mpv \
-  -DOFS_BUNDLE_MACOS_LIBMPV=ON \
-  -DOFS_MACOS_ADHOC_SIGN=ON
-cmake --build build/macos-arm64 --config Release --parallel 4
+make adhoc
 ```
 
-The policy and declaration-warning options are compatibility settings for the
-bundled dependencies. `OFS_BUNDLE_MACOS_LIBMPV` copies libmpv and its
-non-system dylib dependencies into the application bundle and rewrites their
-load paths. A target Mac therefore does not need Homebrew installed.
+`make local` is an alias for `make adhoc`. The default build uses
+`MPV_ROOT=/opt/homebrew/opt/mpv`, four parallel jobs, the `Unix Makefiles`
+generator, and the compatibility options needed by the bundled dependencies.
+Override these with exported variables or command-line assignments; run
+`make help` for the complete list. `OFS_BUNDLE_MACOS_LIBMPV` copies libmpv and
+its non-system dylib dependencies into the application bundle and rewrites
+their load paths. A target Mac therefore does not need Homebrew installed.
 
 The generated application is `bin/OpenFunscripter.app`. The ad-hoc signature
 is suitable for local testing only; it is not Developer ID signing or
@@ -58,51 +53,64 @@ codesign --verify --deep --strict --verbose=2 bin/OpenFunscripter.app
 
 ### macOS Developer ID release and notarization
 
-Configure with the preceding native macOS `cmake -S` command, keeping
-`-DOFS_BUNDLE_MACOS_LIBMPV=ON` but replacing `-DOFS_MACOS_ADHOC_SIGN=ON` with
-`-DOFS_MACOS_ADHOC_SIGN=OFF`. Then replace the placeholders below and run:
+`make prepare-release` removes the separate `build/macos-arm64-release` and
+release artifact directories, performs a clean Release arm64 build with
+libmpv bundling enabled and ad-hoc signing disabled, signs every nested Mach-O
+dylib inside-out, signs the outer app with the checked-in LuaJIT entitlement,
+verifies the signatures, and creates
+`release/macos-arm64/OpenFunscripter-macos-arm64-pre-notarization.zip`. It does
+not upload anything.
+
+`make notarize` consumes that existing prepared app and ZIP. It does not build
+or sign again: it validates the nested and outer signatures plus a local
+preparation state and SHA-256 hashes before submitting with `notarytool`. Only
+after an accepted submission does it staple and validate the app, require
+`spctl` to report `source=Notarized Developer ID`, and create/hash the final
+`release/macos-arm64/OpenFunscripter-macos-arm64-notarized.zip`. `make release`
+runs `prepare-release` and then `notarize` sequentially.
+
+Export the variables so Make inherits them in each step. `SIGNING_IDENTITY`
+is required by `prepare-release` and must match an installed Developer ID
+Application identity. `NOTARY_PROFILE` is required by `notarize` and must name
+an existing Keychain-stored notarytool profile. `release` preflights both:
 
 ```sh
-ROOT="$(pwd)"; APP="$ROOT/bin/OpenFunscripter.app"; FRAMEWORKS="$APP/Contents/Frameworks"
-RELEASE_DIR="$ROOT/release/macos-arm64"; ENTITLEMENTS="$ROOT/cmake/OpenFunscripter.entitlements.plist"; SIGNING_IDENTITY="<DEVELOPER_ID_APPLICATION_CERT_SHA1>"; NOTARY_PROFILE="<NOTARYTOOL_KEYCHAIN_PROFILE>"
-PRE_NOTARY_ZIP="$RELEASE_DIR/OpenFunscripter-macos-arm64-pre-notarization.zip"; FINAL_ZIP="$RELEASE_DIR/OpenFunscripter-macos-arm64-notarized.zip"
+export MPV_ROOT=/opt/homebrew/opt/mpv       # optional override
+export BUILD_JOBS=4                         # optional override
+export SIGNING_IDENTITY='<CERTIFICATE_SHA1>' # or full Developer ID Application name
+export NOTARY_PROFILE='<NOTARYTOOL_KEYCHAIN_PROFILE>'
 
-security find-identity -v -p codesigning
-cmake --build build/macos-arm64 --config Release --parallel 4
-mkdir -p "$RELEASE_DIR"
-find "$FRAMEWORKS" -depth -type f -name '*.dylib' -print0 |
-while IFS= read -r -d '' dylib; do
-  file "$dylib" | grep -q 'Mach-O' && \
-    codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$dylib"
-done
-codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGNING_IDENTITY" "$APP"
-codesign --verify --deep --strict --verbose=2 "$APP"
-ditto -c -k --keepParent "$APP" "$PRE_NOTARY_ZIP"
-xcrun notarytool submit "$PRE_NOTARY_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+make prepare-release
+make notarize
+# or: make release
 ```
 
-The `find -depth` loop signs nested Mach-O dylibs inside-out. Sign the outer
-app without `codesign --deep`; never use `--deep` for signing. The outer app
-uses the checked-in LuaJIT compatibility entitlement; nested dylibs receive no
-entitlements. If rejected, run
+Running `make notarize` (directly or through `make release`) is the explicit
+authorization to upload; the Makefile does not add another confirmation
+prompt. If `NOTARY_PROFILE` is unset, the target fails before upload because
+supported `notarytool` commands do not enumerate Keychain profile names. Set it
+to a known profile, or create a named profile once with the locally prompted
+password:
+
+```sh
+xcrun notarytool store-credentials OpenFunscripter --apple-id '<APPLE_ID>' --team-id '<TEAM_ID>'
+```
+
+`make notarize` consumes the recorded signing identity and preparation hashes;
+it does not require the signing certificate, libmpv path, or build-job setting
+to remain available. If a local packaging step fails after notarization has
+been accepted and the app has been stapled, the changed app intentionally fails
+the preparation-hash check on retry rather than being uploaded again. Preserve
+the accepted app for manual repackaging, or run `make prepare-release` for a
+fresh notarization.
+
+Use `security find-identity -v -p codesigning` to select the signing identity.
+Sign nested dylibs with `--force --options runtime --timestamp` and no
+entitlements; the outer app is signed without `codesign --deep` using
+`cmake/OpenFunscripter.entitlements.plist`. If notarization is rejected, review
 `xcrun notarytool log <SUBMISSION_ID> --keychain-profile "$NOTARY_PROFILE"`
-before changing or re-signing. On `Accepted`:
-
-```sh
-xcrun stapler staple "$APP"
-xcrun stapler validate "$APP"
-spctl --assess --type execute --verbose=4 "$APP"  # expect source=Notarized Developer ID
-ditto -c -k --keepParent "$APP" "$FINAL_ZIP"
-shasum -a 256 "$FINAL_ZIP"
-```
-
-Staple before the final ZIP. An existing Keychain profile can be used directly;
-otherwise create it once. notarytool prompts for the password, which must not
-be put in the repository or shell history:
-
-```sh
-xcrun notarytool store-credentials "$NOTARY_PROFILE" --apple-id "<APPLE_ID>" --team-id "<TEAM_ID>"
-```
+before changing or re-signing anything. Never put Apple ID, team, password, or
+notary credentials in the repository or shell history.
 
 ### Windows libmpv binaries used
 Currently using: [mpv-dev-x86_64-v3-20220925-git-56e24d5.7z (it's part of the repository)](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/)
