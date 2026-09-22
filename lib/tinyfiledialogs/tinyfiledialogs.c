@@ -6379,7 +6379,7 @@ char * tinyfd_saveFileDialog(
     while ( fgets( lBuff , sizeof( lBuff ) , lIn ) != NULL )
     {}
     pclose( lIn ) ;
-    if ( lBuff[strlen( lBuff ) -1] == '\n' )
+    if ( lBuff[0] != '\0' && lBuff[strlen( lBuff ) -1] == '\n' )
     {
         lBuff[strlen( lBuff ) -1] = '\0' ;
     }
@@ -6917,7 +6917,7 @@ frontmost of process \\\"Python\\\" to true' ''');");
                 p += strlen( p );
         }
     pclose( lIn ) ;
-    if ( lBuff[strlen( lBuff ) -1] == '\n' )
+    if ( lBuff[0] != '\0' && lBuff[strlen( lBuff ) -1] == '\n' )
     {
         lBuff[strlen( lBuff ) -1] = '\0' ;
     }
@@ -7244,7 +7244,7 @@ frontmost of process \\\"Python\\\" to true' ''');");
         while ( fgets( lBuff , sizeof( lBuff ) , lIn ) != NULL )
         {}
         pclose( lIn ) ;
-    if ( lBuff[strlen( lBuff ) -1] == '\n' )
+    if ( lBuff[0] != '\0' && lBuff[strlen( lBuff ) -1] == '\n' )
     {
         lBuff[strlen( lBuff ) -1] = '\0' ;
     }

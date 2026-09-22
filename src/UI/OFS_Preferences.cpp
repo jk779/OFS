@@ -93,11 +93,11 @@ bool OFS_Preferences::ShowPreferenceWindow() noexcept
 					ImGui::SameLine();
 					if (ImGui::Button(TR(CHANGE))) {
 						Util::OpenFileDialog(TR(CHOOSE_FONT), "",
-							[&](auto& result) {
+							[stateHandle = prefStateHandle](auto& result) {
 								if (result.files.size() > 0) {
+									auto& state = PreferenceState::State(stateHandle);
 									state.fontOverride = result.files.back();
 									OpenFunscripter::ptr->LoadOverrideFont(state.fontOverride);
-									save = true;
 								}
 							}, false, { "*.ttf", "*.otf" }, "Fonts (*.ttf, *.otf)");
 					}
