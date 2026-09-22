@@ -2717,6 +2717,9 @@ void OpenFunscripter::UpdateMacOSMenu() noexcept
     const bool autoBackup = Status & OFS_Status::OFS_AutoBackup;
 
     OFS_MacOS::SetDocumentEdited(window, LoadedProject->HasUnsavedEdits());
+    OFS_MacOS::SetMenuTrackingHandler([this](bool opening) {
+        HandleMacOSMenuTracking(opening);
+    });
 
     if (SDL_GetTicks() - LastExtensionMenuRefresh >= 2000) {
         extensions->UpdateExtensionList();
@@ -2913,6 +2916,29 @@ void OpenFunscripter::UpdateMacOSMenu() noexcept
     OFS_MacOS::UpdateMainMenu(menus, [this](int command, int context) {
         HandleMacOSMenuAction(command, context);
     });
+}
+
+void OpenFunscripter::HandleMacOSMenuTracking(bool opening) noexcept
+{
+    if (opening) {
+        if (!MacMenuPlaybackWasPlaying) {
+            MacMenuPlaybackWasPlaying = player != nullptr && !player->IsPaused();
+            if (MacMenuPlaybackWasPlaying) {
+                player->SetPaused(true);
+            }
+        }
+        return;
+    }
+
+    if (MacMenuPlaybackWasPlaying) {
+        MacMenuPlaybackWasPlaying = false;
+        if (player != nullptr) {
+            // SetPaused() normally suppresses a duplicate request using mpv's
+            // cached state. During menu tracking that cache cannot be updated
+            // until the main loop resumes, so force the matching resume command.
+            player->SetPaused(false, true);
+        }
+    }
 }
 
 void OpenFunscripter::HandleMacOSMenuAction(int commandValue, int context) noexcept

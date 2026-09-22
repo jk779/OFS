@@ -206,7 +206,9 @@ public:
 private:
     uint32_t LastExtensionMenuRefresh = 0;
     int32_t MacSelectionPoint = -1;
+    bool MacMenuPlaybackWasPlaying = false;
     void UpdateMacOSMenu() noexcept;
+    void HandleMacOSMenuTracking(bool opening) noexcept;
     void HandleMacOSMenuAction(int command, int context) noexcept;
 #endif
 

@@ -6,11 +6,13 @@
 namespace {
 
 OFS_MacOS::MenuActionHandler MenuHandler;
+OFS_MacOS::MenuTrackingHandler CurrentMenuTrackingHandler;
 std::vector<OFS_MacOS::Menu> CurrentMenus;
+int MenuTrackingDepth = 0;
 
 } // namespace
 
-@interface OFSMenuTarget : NSObject
+@interface OFSMenuTarget : NSObject <NSMenuDelegate>
 - (void)performMenuAction:(id)sender;
 @end
 
@@ -26,6 +28,23 @@ std::vector<OFS_MacOS::Menu> CurrentMenus;
         return;
     }
     MenuHandler([[action objectAtIndex:0] intValue], [[action objectAtIndex:1] intValue]);
+}
+
+- (void)menuWillOpen:(NSMenu*)menu
+{
+    if (MenuTrackingDepth++ == 0 && CurrentMenuTrackingHandler != nullptr) {
+        CurrentMenuTrackingHandler(true);
+    }
+}
+
+- (void)menuDidClose:(NSMenu*)menu
+{
+    if (MenuTrackingDepth <= 0) {
+        return;
+    }
+    if (--MenuTrackingDepth == 0 && CurrentMenuTrackingHandler != nullptr) {
+        CurrentMenuTrackingHandler(false);
+    }
 }
 @end
 
@@ -89,6 +108,7 @@ NSMenuItem* BuildMenuItem(const OFS_MacOS::MenuItem& item)
 
     if (!item.children.empty() || item.role == MenuItemRole::Services) {
         NSMenu* submenu = [[[NSMenu alloc] initWithTitle:ToNSString(item.title)] autorelease];
+        [submenu setDelegate:GetMenuTarget()];
         [submenu setAutoenablesItems:NO];
         for (const auto& child : item.children) {
             [submenu addItem:BuildMenuItem(child)];
@@ -152,11 +172,13 @@ void UpdateMainMenu(const std::vector<Menu>& menus, MenuActionHandler handler) n
         CurrentMenus = menus;
 
         NSMenu* mainMenu = [[[NSMenu alloc] initWithTitle:@""] autorelease];
+        [mainMenu setDelegate:GetMenuTarget()];
         for (const auto& menu : menus) {
             NSMenuItem* rootItem = [[[NSMenuItem alloc] initWithTitle:ToNSString(menu.title)
                 action:nil keyEquivalent:@""] autorelease];
             [rootItem setEnabled:menu.enabled ? YES : NO];
             NSMenu* submenu = [[[NSMenu alloc] initWithTitle:ToNSString(menu.title)] autorelease];
+            [submenu setDelegate:GetMenuTarget()];
             [submenu setAutoenablesItems:NO];
             for (const auto& item : menu.items) {
                 [submenu addItem:BuildMenuItem(item)];
@@ -177,9 +199,16 @@ void UpdateMainMenu(const std::vector<Menu>& menus, MenuActionHandler handler) n
     }
 }
 
+void SetMenuTrackingHandler(MenuTrackingHandler handler) noexcept
+{
+    CurrentMenuTrackingHandler = std::move(handler);
+}
+
 void ClearMainMenuHandler() noexcept
 {
     MenuHandler = nullptr;
+    CurrentMenuTrackingHandler = nullptr;
+    MenuTrackingDepth = 0;
     CurrentMenus.clear();
 }
 
