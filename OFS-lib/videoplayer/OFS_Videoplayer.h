@@ -37,7 +37,7 @@ class OFS_Videoplayer
     void SeekRelative(float timeSeconds) noexcept;
     void SeekFrames(int32_t offset) noexcept;
 
-    void SetPaused(bool paused) noexcept;
+    void SetPaused(bool paused, bool force = false) noexcept;
     void TogglePlay() noexcept { SetPaused(!IsPaused()); }
     void CycleSubtitles() noexcept;
     void CloseVideo() noexcept;

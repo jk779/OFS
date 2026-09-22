@@ -9,6 +9,9 @@
 #include "OFS_MpvLoader.h"
 #include "OFS_Localization.h"
 #include "OFS_Platform.h"
+#if defined(__APPLE__)
+#include "OFS_MacOS.h"
+#endif
 
 #include "state/OpenFunscripterState.h"
 #include "state/states/VideoplayerWindowState.h"
@@ -149,6 +152,8 @@ bool OpenFunscripter::Init(int argc, char* argv[])
 
     stateHandle = OFS_AppState<OpenFunscripterState>::Register(OpenFunscripterState::StateName);
     const auto& ofsState = OpenFunscripterState::State(stateHandle);
+    HeatmapSettingsWidth = ofsState.heatmapSettings.defaultWidth;
+    HeatmapSettingsHeight = ofsState.heatmapSettings.defaultHeight;
 
     preferences = std::make_unique<OFS_Preferences>();
     const auto& prefState = PreferenceState::State(preferences->StateHandle());
@@ -1599,6 +1604,7 @@ void OpenFunscripter::Step() noexcept
 
             auto& overlayState = BaseOverlay::State();
             ShowAboutWindow(&ShowAbout);
+            ShowHeatmapSettingsWindow();
 
             specialFunctions->ShowFunctionsWindow(&ofsState.showSpecialFunctions);
             undoSystem->ShowUndoRedoHistory(&ofsState.showHistory);
@@ -1623,7 +1629,18 @@ void OpenFunscripter::Step() noexcept
 
             if (preferences->ShowPreferenceWindow()) {}
 
+#if defined(__APPLE__)
+            const bool controllerConnected = ControllerInput::AnythingConnected();
+            const bool navModeActive = ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_NavEnableGamepad;
+            const char* controllerStatus = controllerConnected
+                ? FMT(ICON_GAMEPAD "  %s", navModeActive ? TR(NAVIGATION) : TR(SCRIPTING))
+                : nullptr;
+            playerControls.DrawControls(controllerStatus,
+                controllerConnected ? ControllerInput::Controllers[0].GetName() : nullptr,
+                IdleMode, TR(IDLE_MODE_TOOLTIP));
+#else
             playerControls.DrawControls();
+#endif
 
             if (Status & OFS_GradientNeedsUpdate) {
                 Status &= ~(OFS_GradientNeedsUpdate);
@@ -1767,6 +1784,10 @@ int OpenFunscripter::Run() noexcept
 void OpenFunscripter::Shutdown() noexcept
 {
     SaveState();
+
+#if defined(__APPLE__)
+    OFS_MacOS::ClearMainMenuHandler();
+#endif
 
     OFS_DynFontAtlas::Shutdown();
     OFS_Translator::Shutdown();
@@ -2387,13 +2408,11 @@ void OpenFunscripter::ShowMainMenuBar() noexcept
 
             ImGui::Separator();
 
-            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.f);
-            ImGui::InputInt("##width", &ofsState.heatmapSettings.defaultWidth);
-            ImGui::SameLine();
-            ImGui::TextUnformatted("x");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.f);
-            ImGui::InputInt("##height", &ofsState.heatmapSettings.defaultHeight);
+            if (ImGui::MenuItem(TR(HEATMAP_SETTINGS))) {
+                HeatmapSettingsWidth = ofsState.heatmapSettings.defaultWidth;
+                HeatmapSettingsHeight = ofsState.heatmapSettings.defaultHeight;
+                ShowHeatmapSettings = true;
+            }
             if (ImGui::MenuItem(TR(SAVE_HEATMAP))) {
                 std::string filename = ActiveFunscript()->Title() + "_Heatmap.png";
                 auto defaultPath = Util::PathFromString(ofsState.heatmapSettings.defaultPath);
@@ -2541,40 +2560,28 @@ void OpenFunscripter::ShowMainMenuBar() noexcept
                 playerWindow->ResetTranslationAndZoom();
             }
 
-            auto videoModeToString = [](VideoMode mode) noexcept -> const char* {
-                switch (mode) {
-                    case VideoMode::Full: return TR(VIDEO_MODE_FULL);
-                    case VideoMode::LeftPane: return TR(VIDEO_MODE_LEFT_PANE);
-                    case VideoMode::RightPane: return TR(VIDEO_MODE_RIGHT_PANE);
-                    case VideoMode::TopPane: return TR(VIDEO_MODE_TOP_PANE);
-                    case VideoMode::BottomPane: return TR(VIDEO_MODE_BOTTOM_PANE);
-                    case VideoMode::VrMode: return TR(VIDEO_MODE_VR);
-                }
-                return "";
-            };
-
             auto& videoWindow = VideoPlayerWindowState::State(playerWindow->StateHandle());
-            if (ImGui::BeginCombo(TR(VIDEO_MODE), videoModeToString(videoWindow.activeMode))) {
+            if (ImGui::BeginMenu(TR(VIDEO_MODE))) {
                 auto& mode = videoWindow.activeMode;
-                if (ImGui::Selectable(TR(VIDEO_MODE_FULL), mode == VideoMode::Full)) {
+                if (ImGui::MenuItem(TR(VIDEO_MODE_FULL), nullptr, mode == VideoMode::Full)) {
                     mode = VideoMode::Full;
                 }
-                if (ImGui::Selectable(TR(VIDEO_MODE_LEFT_PANE), mode == VideoMode::LeftPane)) {
+                if (ImGui::MenuItem(TR(VIDEO_MODE_LEFT_PANE), nullptr, mode == VideoMode::LeftPane)) {
                     mode = VideoMode::LeftPane;
                 }
-                if (ImGui::Selectable(TR(VIDEO_MODE_RIGHT_PANE), mode == VideoMode::RightPane)) {
+                if (ImGui::MenuItem(TR(VIDEO_MODE_RIGHT_PANE), nullptr, mode == VideoMode::RightPane)) {
                     mode = VideoMode::RightPane;
                 }
-                if (ImGui::Selectable(TR(VIDEO_MODE_TOP_PANE), mode == VideoMode::TopPane)) {
+                if (ImGui::MenuItem(TR(VIDEO_MODE_TOP_PANE), nullptr, mode == VideoMode::TopPane)) {
                     mode = VideoMode::TopPane;
                 }
-                if (ImGui::Selectable(TR(VIDEO_MODE_BOTTOM_PANE), mode == VideoMode::BottomPane)) {
+                if (ImGui::MenuItem(TR(VIDEO_MODE_BOTTOM_PANE), nullptr, mode == VideoMode::BottomPane)) {
                     mode = VideoMode::BottomPane;
                 }
-                if (ImGui::Selectable(TR(VIDEO_MODE_VR), mode == VideoMode::VrMode)) {
+                if (ImGui::MenuItem(TR(VIDEO_MODE_VR), nullptr, mode == VideoMode::VrMode)) {
                     mode = VideoMode::VrMode;
                 }
-                ImGui::EndCombo();
+                ImGui::EndMenu();
             }
 
             ImGui::Separator();
@@ -2663,6 +2670,478 @@ void OpenFunscripter::ShowMainMenuBar() noexcept
 #undef BINDING_STRING
 }
 
+#if defined(__APPLE__)
+namespace {
+using NativeCommand = OpenFunscripter::MacMenuCommand;
+using NativeItem = OFS_MacOS::MenuItem;
+using NativeRole = OFS_MacOS::MenuItemRole;
+
+NativeItem NativeAction(const char* title, NativeCommand command, bool enabled = true,
+    bool checked = false, int context = 0)
+{
+    return { title, static_cast<int>(command), context, enabled, checked, NativeRole::Action, {} };
+}
+
+NativeItem NativeSeparator()
+{
+    NativeItem item;
+    item.role = NativeRole::Separator;
+    return item;
+}
+
+NativeItem NativeSubmenu(const char* title, std::vector<NativeItem>&& children, bool enabled = true)
+{
+    NativeItem item;
+    item.title = title;
+    item.enabled = enabled;
+    item.children = std::move(children);
+    return item;
+}
+
+NativeItem NativeSystemItem(const char* title, NativeRole role)
+{
+    NativeItem item;
+    item.title = title;
+    item.role = role;
+    return item;
+}
+} // namespace
+
+void OpenFunscripter::UpdateMacOSMenu() noexcept
+{
+    auto& ofsState = OpenFunscripterState::State(stateHandle);
+    const bool projectValid = LoadedProject->IsValid();
+    const bool hasSelection = ActiveFunscript()->HasSelection();
+    const bool hasClipboard = !CopiedSelection.empty();
+    const bool fullscreen = Status & OFS_Status::OFS_Fullscreen;
+    const bool autoBackup = Status & OFS_Status::OFS_AutoBackup;
+
+    OFS_MacOS::SetDocumentEdited(window, LoadedProject->HasUnsavedEdits());
+    OFS_MacOS::SetMenuTrackingHandler([this](bool opening) {
+        HandleMacOSMenuTracking(opening);
+    });
+
+    if (SDL_GetTicks() - LastExtensionMenuRefresh >= 2000) {
+        extensions->UpdateExtensionList();
+        LastExtensionMenuRefresh = SDL_GetTicks();
+    }
+
+    std::vector<OFS_MacOS::Menu> menus;
+    auto addMenu = [&menus](const char* title, std::vector<NativeItem>&& items, bool enabled = true) {
+        menus.push_back({ title, enabled, std::move(items) });
+    };
+
+    addMenu("OpenFunscripter", {
+        NativeAction(FMT("%s OpenFunscripter", TR(ABOUT)), NativeCommand::About),
+        NativeSeparator(),
+        NativeAction(TR(PREFERENCES), NativeCommand::Preferences),
+        NativeSeparator(),
+        NativeSystemItem("Services", NativeRole::Services),
+        NativeSeparator(),
+        NativeSystemItem("Hide OpenFunscripter", NativeRole::HideApplication),
+        NativeSystemItem("Hide Others", NativeRole::HideOtherApplications),
+        NativeSystemItem("Show All", NativeRole::ShowAllApplications),
+        NativeSeparator(),
+        NativeAction("Quit OpenFunscripter", NativeCommand::Quit),
+    });
+
+    std::vector<NativeItem> recentItems;
+    if (ofsState.recentFiles.empty()) {
+        recentItems.push_back(NativeAction(TR(NO_RECENT_FILES), NativeCommand::OpenRecent, false));
+    }
+    for (int index = static_cast<int>(ofsState.recentFiles.size()) - 1; index >= 0; --index) {
+        const auto& recent = ofsState.recentFiles[index];
+        recentItems.push_back(NativeAction(recent.name.c_str(), NativeCommand::OpenRecent,
+            !recent.projectPath.empty(), false, index));
+    }
+    recentItems.push_back(NativeSeparator());
+    recentItems.push_back(NativeAction(TR(CLEAR_RECENT_FILES), NativeCommand::ClearRecent,
+        !ofsState.recentFiles.empty()));
+
+    const auto secondsSinceBackup = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - lastBackup).count();
+    const char* autoBackupTitle = autoBackup && projectValid
+        ? FMT(TR(AUTO_BACKUP_TIMER_FMT), static_cast<int>(AutoBackupIntervalSeconds - secondsSinceBackup))
+        : TR(AUTO_BACKUP);
+    addMenu(TR(FILE), {
+        NativeAction(TR(GENERIC_OPEN), NativeCommand::Open),
+        NativeAction(TR(CLOSE_PROJECT), NativeCommand::CloseProject, projectValid),
+        NativeSeparator(),
+        NativeSubmenu(TR(RECENT_FILES), std::move(recentItems)),
+        NativeSeparator(),
+        NativeAction(TR(SAVE_PROJECT), NativeCommand::SaveProject, projectValid),
+        NativeSubmenu(TR(EXPORT_MENU), {
+            NativeAction(TR(QUICK_EXPORT), NativeCommand::QuickExport),
+            NativeAction(TR(EXPORT_ACTIVE_SCRIPT), NativeCommand::ExportActiveScript),
+            NativeAction(TR(EXPORT_ALL), NativeCommand::ExportAll),
+        }, projectValid),
+        NativeSeparator(),
+        NativeAction(autoBackupTitle, NativeCommand::ToggleAutoBackup, true, autoBackup),
+        NativeAction(TR(OPEN_BACKUP_DIR), NativeCommand::OpenBackupDirectory),
+    });
+
+    std::vector<NativeItem> shortcutItems;
+    for (int index = 0; index < static_cast<int>(Funscript::AxisNames.size()); ++index) {
+        shortcutItems.push_back(NativeAction(Funscript::AxisNames[index], NativeCommand::AddShortcut,
+            projectValid, false, index));
+    }
+    std::vector<NativeItem> removeItems;
+    for (int index = 0; index < static_cast<int>(LoadedFunscripts().size()); ++index) {
+        removeItems.push_back(NativeAction(LoadedFunscripts()[index]->Title().c_str(),
+            NativeCommand::RemoveScript, true, false, index));
+    }
+    addMenu(TR(PROJECT), {
+        NativeAction(TR(CONFIGURE), NativeCommand::ConfigureProject, projectValid, ShowProjectEditor),
+        NativeSeparator(),
+        NativeAction(TR(PICK_DIFFERENT_MEDIA), NativeCommand::PickDifferentMedia, projectValid),
+        NativeSubmenu(TR(ADD_MENU), {
+            NativeSubmenu(TR(ADD_SHORTCUTS), std::move(shortcutItems)),
+            NativeAction(TR(ADD_NEW), NativeCommand::AddNewScript),
+            NativeAction(TR(ADD_EXISTING), NativeCommand::AddExistingScripts),
+        }, projectValid),
+        NativeSubmenu(TR(REMOVE), std::move(removeItems), projectValid && !LoadedFunscripts().empty()),
+    }, projectValid);
+
+    addMenu(TR(EDIT), {
+        NativeAction(TR(SAVE_FRAME_AS_IMAGE), NativeCommand::SaveFrameAsImage),
+        NativeAction(TR(OPEN_SCREENSHOT_DIR), NativeCommand::OpenScreenshotDirectory),
+        NativeSeparator(),
+        NativeAction(TR(HEATMAP_SETTINGS), NativeCommand::HeatmapSettings),
+        NativeAction(TR(SAVE_HEATMAP), NativeCommand::SaveHeatmap, projectValid),
+        NativeAction(TR(SAVE_HEATMAP_WITH_CHAPTERS), NativeCommand::SaveHeatmapWithChapters, projectValid),
+        NativeSeparator(),
+        NativeAction(TR(UNDO), NativeCommand::Undo, !undoSystem->UndoEmpty()),
+        NativeAction(TR(REDO), NativeCommand::Redo, !undoSystem->RedoEmpty()),
+        NativeSeparator(),
+        NativeAction(TR(CUT), NativeCommand::Cut, hasSelection),
+        NativeAction(TR(COPY), NativeCommand::Copy, hasSelection),
+        NativeAction(TR(PASTE), NativeCommand::Paste, hasClipboard),
+    });
+
+    addMenu(TR(SELECT), {
+        NativeAction(TR(SELECT_ALL), NativeCommand::SelectAll),
+        NativeAction(TR(DESELECT_ALL), NativeCommand::DeselectAll),
+        NativeSubmenu(TR(SPECIAL), {
+            NativeAction(TR(SELECT_ALL_LEFT), NativeCommand::SelectAllLeft),
+            NativeAction(TR(SELECT_ALL_RIGHT), NativeCommand::SelectAllRight),
+            NativeSeparator(),
+            NativeAction(TR(SET_SELECTION_START), NativeCommand::SetSelectionStart),
+            NativeAction(TR(SET_SELECTION_END), NativeCommand::SetSelectionEnd),
+        }),
+        NativeSeparator(),
+        NativeAction(TR(TOP_POINTS_ONLY), NativeCommand::SelectTopPoints),
+        NativeAction(TR(MID_POINTS_ONLY), NativeCommand::SelectMiddlePoints),
+        NativeAction(TR(BOTTOM_POINTS_ONLY), NativeCommand::SelectBottomPoints),
+        NativeSeparator(),
+        NativeAction(TR(EQUALIZE), NativeCommand::Equalize),
+        NativeAction(TR(INVERT), NativeCommand::Invert),
+        NativeAction(TR(ISOLATE), NativeCommand::Isolate),
+    });
+
+    auto& videoWindow = VideoPlayerWindowState::State(playerWindow->StateHandle());
+    std::vector<NativeItem> viewItems;
+#ifndef NDEBUG
+    viewItems.push_back(NativeAction("Reset layout", NativeCommand::ResetLayout));
+    viewItems.push_back(NativeSeparator());
+#endif
+    viewItems.insert(viewItems.end(), {
+        NativeAction(TR(STATISTICS), NativeCommand::ToggleStatistics, true, ofsState.showStatistics),
+        NativeAction(TR(UNDO_REDO_HISTORY), NativeCommand::ToggleHistory, true, ofsState.showHistory),
+        NativeAction(TR(SIMULATOR), NativeCommand::ToggleSimulator, true, ofsState.showSimulator),
+        NativeAction(TR(METADATA), NativeCommand::ToggleMetadata, true, ShowMetadataEditor),
+        NativeAction(TR(ACTION_EDITOR), NativeCommand::ToggleActionEditor, true, ofsState.showActionEditor),
+        NativeAction(TR(SPECIAL_FUNCTIONS), NativeCommand::ToggleSpecialFunctions, true, ofsState.showSpecialFunctions),
+        NativeAction(TR(WEBSOCKET_API), NativeCommand::ToggleWebsocketApi, true, ofsState.showWsApi),
+        NativeAction(TR(CHAPTERS), NativeCommand::ToggleChapters, true, ofsState.showChapterManager),
+        NativeSeparator(),
+        NativeAction(TR(DRAW_VIDEO), NativeCommand::ToggleVideo, true, ofsState.showVideo),
+        NativeAction(TR(RESET_VIDEO_POS), NativeCommand::ResetVideoPosition),
+        NativeSubmenu(TR(VIDEO_MODE), {
+            NativeAction(TR(VIDEO_MODE_FULL), NativeCommand::SetVideoMode, true, videoWindow.activeMode == VideoMode::Full, VideoMode::Full),
+            NativeAction(TR(VIDEO_MODE_LEFT_PANE), NativeCommand::SetVideoMode, true, videoWindow.activeMode == VideoMode::LeftPane, VideoMode::LeftPane),
+            NativeAction(TR(VIDEO_MODE_RIGHT_PANE), NativeCommand::SetVideoMode, true, videoWindow.activeMode == VideoMode::RightPane, VideoMode::RightPane),
+            NativeAction(TR(VIDEO_MODE_TOP_PANE), NativeCommand::SetVideoMode, true, videoWindow.activeMode == VideoMode::TopPane, VideoMode::TopPane),
+            NativeAction(TR(VIDEO_MODE_BOTTOM_PANE), NativeCommand::SetVideoMode, true, videoWindow.activeMode == VideoMode::BottomPane, VideoMode::BottomPane),
+            NativeAction(TR(VIDEO_MODE_VR), NativeCommand::SetVideoMode, true, videoWindow.activeMode == VideoMode::VrMode, VideoMode::VrMode),
+        }),
+        NativeSeparator(),
+    });
+    std::vector<NativeItem> debugItems {
+        NativeAction(TR(METRICS), NativeCommand::ToggleMetrics, true, DebugMetrics),
+        NativeAction(TR(LOG_OUTPUT), NativeCommand::ToggleDebugLog, true, ofsState.showDebugLog),
+    };
+#ifndef NDEBUG
+    debugItems.push_back(NativeAction("ImGui Demo", NativeCommand::ToggleImGuiDemo, true, DebugDemo));
+#endif
+    viewItems.push_back(NativeSubmenu(TR(DEBUG), std::move(debugItems)));
+    addMenu(TR(VIEW_MENU), std::move(viewItems));
+
+    std::vector<NativeItem> controllerItems;
+    if (ControllerInput::AnythingConnected()) {
+        controllerItems.push_back(NativeAction(TR(CONTROLLER_CONNECTED), NativeCommand::ShowKeys, false));
+        controllerItems.push_back(NativeAction(ControllerInput::Controllers[0].GetName(), NativeCommand::ShowKeys, false));
+    }
+    addMenu(TR(OPTIONS), {
+        NativeAction(TR(KEYS), NativeCommand::ShowKeys),
+        NativeAction(TR(FULLSCREEN), NativeCommand::ToggleFullscreen, true, fullscreen),
+        NativeSubmenu(TR(CONTROLLER), std::move(controllerItems), ControllerInput::AnythingConnected()),
+    });
+
+    std::vector<NativeItem> extensionItems {
+        NativeAction(TR(DEV_MODE), NativeCommand::ToggleExtensionDevMode, true, OFS_LuaExtensions::DevMode),
+        NativeAction(TR(SHOW_LOGS), NativeCommand::ToggleExtensionLogs, true, OFS_LuaExtensions::ShowLogs),
+        NativeAction(TR(EXTENSION_DIR), NativeCommand::OpenExtensionDirectory),
+        NativeSeparator(),
+    };
+    for (int index = 0; index < static_cast<int>(extensions->Extensions.size()); ++index) {
+        auto& ext = extensions->Extensions[index];
+        extensionItems.push_back(NativeSubmenu(ext.Name.c_str(), {
+            NativeAction(TR(ENABLED), NativeCommand::ToggleExtension, true, ext.Active, index),
+            NativeAction(Util::Format(TR(SHOW_WINDOW), ext.Name.c_str()), NativeCommand::ToggleExtensionWindow,
+                ext.Active, ext.WindowOpen, index),
+            NativeAction(Util::Format(TR(OPEN_DIRECTORY), ext.Name.c_str()), NativeCommand::OpenSpecificExtensionDirectory,
+                true, false, index),
+        }));
+    }
+    addMenu(TR(EXTENSIONS_MENU), std::move(extensionItems));
+
+    addMenu("Window", {
+        NativeSystemItem("Close", NativeRole::CloseWindow),
+        NativeSystemItem("Minimize", NativeRole::MinimizeWindow),
+        NativeSystemItem("Zoom", NativeRole::ZoomWindow),
+        NativeSeparator(),
+        NativeSystemItem("Bring All to Front", NativeRole::BringAllToFront),
+    });
+
+    OFS_MacOS::UpdateMainMenu(menus, [this](int command, int context) {
+        HandleMacOSMenuAction(command, context);
+    });
+}
+
+void OpenFunscripter::HandleMacOSMenuTracking(bool opening) noexcept
+{
+    if (opening) {
+        if (!MacMenuPlaybackWasPlaying) {
+            MacMenuPlaybackWasPlaying = player != nullptr && !player->IsPaused();
+            if (MacMenuPlaybackWasPlaying) {
+                player->SetPaused(true);
+            }
+        }
+        return;
+    }
+
+    if (MacMenuPlaybackWasPlaying) {
+        MacMenuPlaybackWasPlaying = false;
+        if (player != nullptr) {
+            // SetPaused() normally suppresses a duplicate request using mpv's
+            // cached state. During menu tracking that cache cannot be updated
+            // until the main loop resumes, so force the matching resume command.
+            player->SetPaused(false, true);
+        }
+    }
+}
+
+void OpenFunscripter::HandleMacOSMenuAction(int commandValue, int context) noexcept
+{
+    const auto command = static_cast<MacMenuCommand>(commandValue);
+    auto& ofsState = OpenFunscripterState::State(stateHandle);
+    auto fileAlreadyLoaded = [this](const std::string& path) noexcept {
+        auto filename = Util::PathFromString(path).filename().u8string();
+        return std::any_of(LoadedFunscripts().begin(), LoadedFunscripts().end(),
+            [&filename](const auto& script) {
+                return Util::PathFromString(script->RelativePath()).filename().u8string() == filename;
+            });
+    };
+    auto saveHeatmapWithChapters = [this, &ofsState](bool withChapters) {
+        std::string filename = ActiveFunscript()->Title() + "_Heatmap.png";
+        auto defaultPath = Util::PathFromString(ofsState.heatmapSettings.defaultPath);
+        Util::ConcatPathSafe(defaultPath, filename);
+        Util::SaveFileDialog(TR(SAVE_HEATMAP), defaultPath.u8string(),
+            [this, withChapters](auto& result) {
+                if (!result.files.empty()) {
+                    auto savePath = Util::PathFromString(result.files.front());
+                    if (savePath.has_filename()) {
+                        auto& state = OpenFunscripterState::State(stateHandle);
+                        saveHeatmap(result.files.front().c_str(), state.heatmapSettings.defaultWidth,
+                            state.heatmapSettings.defaultHeight, withChapters);
+                        savePath.remove_filename();
+                        state.heatmapSettings.defaultPath = savePath.u8string();
+                    }
+                }
+            }, { "*.png" }, "PNG");
+    };
+
+    switch (command) {
+        case MacMenuCommand::About: ShowAbout = true; break;
+        case MacMenuCommand::Preferences: preferences->ShowWindow = true; break;
+        case MacMenuCommand::Quit: exitApp(); break;
+        case MacMenuCommand::Open:
+            Util::OpenFileDialog(TR(GENERIC_OPEN), ofsState.lastPath,
+                [this](auto& result) { if (!result.files.empty()) openFile(result.files[0]); }, false);
+            break;
+        case MacMenuCommand::CloseProject: closeWithoutSavingDialog([]() {}); break;
+        case MacMenuCommand::OpenRecent:
+            if (context >= 0 && context < static_cast<int>(ofsState.recentFiles.size())) {
+                auto path = ofsState.recentFiles[context].projectPath;
+                if (!path.empty()) closeWithoutSavingDialog([this, path]() { openFile(path); });
+            }
+            break;
+        case MacMenuCommand::ClearRecent: ofsState.recentFiles.clear(); break;
+        case MacMenuCommand::SaveProject: saveProject(); break;
+        case MacMenuCommand::QuickExport: quickExport(); break;
+        case MacMenuCommand::ExportActiveScript: saveActiveScriptAs(); break;
+        case MacMenuCommand::ExportAll:
+            if (LoadedFunscripts().size() == 1) {
+                auto path = Util::PathFromString(ofsState.lastPath) / (ActiveFunscript()->Title() + ".funscript");
+                Util::SaveFileDialog(TR(EXPORT_MENU), path.u8string(), [this](auto& result) {
+                    if (!result.files.empty()) {
+                        LoadedProject->ExportFunscript(result.files[0], LoadedProject->ActiveIdx());
+                        auto dir = Util::PathFromString(result.files[0]);
+                        dir.remove_filename();
+                        OpenFunscripterState::State(stateHandle).lastPath = dir.u8string();
+                    }
+                }, { "Funscript", "*.funscript" });
+            }
+            else if (LoadedFunscripts().size() > 1) {
+                Util::OpenDirectoryDialog(TR(EXPORT_MENU), ofsState.lastPath, [this](auto& result) {
+                    if (!result.files.empty()) LoadedProject->ExportFunscripts(result.files[0]);
+                });
+            }
+            break;
+        case MacMenuCommand::ToggleAutoBackup:
+            Status = (Status & OFS_Status::OFS_AutoBackup)
+                ? Status & ~OFS_Status::OFS_AutoBackup : Status | OFS_Status::OFS_AutoBackup;
+            break;
+        case MacMenuCommand::OpenBackupDirectory: Util::OpenFileExplorer(Util::Prefpath("backup").c_str()); break;
+        case MacMenuCommand::ConfigureProject: ShowProjectEditor = !ShowProjectEditor; break;
+        case MacMenuCommand::PickDifferentMedia: pickDifferentMedia(); break;
+        case MacMenuCommand::AddShortcut:
+            if (context >= 0 && context < static_cast<int>(Funscript::AxisNames.size())) {
+                auto root = Util::PathFromString(LoadedProject->MakePathAbsolute(LoadedFunscripts()[0]->RelativePath()));
+                root.replace_extension(Util::Format(".%s.funscript", Funscript::AxisNames[context]));
+                if (!fileAlreadyLoaded(root.u8string())) LoadedProject->AddFunscript(root.u8string());
+            }
+            break;
+        case MacMenuCommand::AddNewScript:
+            Util::SaveFileDialog(TR(ADD_NEW_FUNSCRIPT), ofsState.lastPath, [fileAlreadyLoaded](auto& result) {
+                if (!result.files.empty() && !fileAlreadyLoaded(result.files[0])) {
+                    OpenFunscripter::ptr->LoadedProject->AddFunscript(result.files[0]);
+                }
+            }, { "Funscript", "*.funscript" });
+            break;
+        case MacMenuCommand::AddExistingScripts:
+            Util::OpenFileDialog(TR(ADD_EXISTING_FUNSCRIPTS), ofsState.lastPath, [fileAlreadyLoaded](auto& result) {
+                for (const auto& path : result.files) {
+                    if (!fileAlreadyLoaded(path)) OpenFunscripter::ptr->LoadedProject->AddFunscript(path);
+                }
+            }, true, { "*.funscript" }, "Funscript");
+            break;
+        case MacMenuCommand::RemoveScript:
+            if (context >= 0 && context < static_cast<int>(LoadedFunscripts().size())) {
+                Util::YesNoCancelDialog(TR(REMOVE_SCRIPT), TR(REMOVE_SCRIPT_CONFIRM_MSG),
+                    [this, context](Util::YesNoCancel result) {
+                        if (result == Util::YesNoCancel::Yes) {
+                            LoadedProject->RemoveFunscript(context);
+                            auto activeIdx = LoadedProject->ActiveIdx();
+                            if (activeIdx > 0) UpdateNewActiveScript(activeIdx - 1);
+                        }
+                    });
+            }
+            break;
+        case MacMenuCommand::SaveFrameAsImage: player->SaveFrameToImage(Util::Prefpath("screenshot")); break;
+        case MacMenuCommand::OpenScreenshotDirectory: {
+            auto dir = Util::Prefpath("screenshot");
+            Util::CreateDirectories(dir);
+            Util::OpenFileExplorer(dir.c_str());
+            break;
+        }
+        case MacMenuCommand::HeatmapSettings:
+            HeatmapSettingsWidth = ofsState.heatmapSettings.defaultWidth;
+            HeatmapSettingsHeight = ofsState.heatmapSettings.defaultHeight;
+            ShowHeatmapSettings = true;
+            break;
+        case MacMenuCommand::SaveHeatmap: saveHeatmapWithChapters(false); break;
+        case MacMenuCommand::SaveHeatmapWithChapters: saveHeatmapWithChapters(true); break;
+        case MacMenuCommand::Undo: Undo(); break;
+        case MacMenuCommand::Redo: Redo(); break;
+        case MacMenuCommand::Cut: cutSelection(); break;
+        case MacMenuCommand::Copy: copySelection(); break;
+        case MacMenuCommand::Paste: pasteSelection(); break;
+        case MacMenuCommand::SelectAll: ActiveFunscript()->SelectAll(); break;
+        case MacMenuCommand::DeselectAll: ActiveFunscript()->ClearSelection(); break;
+        case MacMenuCommand::SelectAllLeft:
+            ActiveFunscript()->SelectTime(0, player->CurrentTime());
+            break;
+        case MacMenuCommand::SelectAllRight:
+            ActiveFunscript()->SelectTime(player->CurrentTime(), player->Duration());
+            break;
+        case MacMenuCommand::SetSelectionStart:
+            if (MacSelectionPoint == -1) MacSelectionPoint = player->CurrentTime();
+            else { ActiveFunscript()->SelectTime(player->CurrentTime(), MacSelectionPoint); MacSelectionPoint = -1; }
+            break;
+        case MacMenuCommand::SetSelectionEnd:
+            if (MacSelectionPoint == -1) MacSelectionPoint = player->CurrentTime();
+            else { ActiveFunscript()->SelectTime(MacSelectionPoint, player->CurrentTime()); MacSelectionPoint = -1; }
+            break;
+        case MacMenuCommand::SelectTopPoints: if (ActiveFunscript()->HasSelection()) selectTopPoints(); break;
+        case MacMenuCommand::SelectMiddlePoints: if (ActiveFunscript()->HasSelection()) selectMiddlePoints(); break;
+        case MacMenuCommand::SelectBottomPoints: if (ActiveFunscript()->HasSelection()) selectBottomPoints(); break;
+        case MacMenuCommand::Equalize: equalizeSelection(); break;
+        case MacMenuCommand::Invert: invertSelection(); break;
+        case MacMenuCommand::Isolate: isolateAction(); break;
+        case MacMenuCommand::ResetLayout: setupDefaultLayout(true); break;
+        case MacMenuCommand::ToggleStatistics: ofsState.showStatistics = !ofsState.showStatistics; break;
+        case MacMenuCommand::ToggleHistory: ofsState.showHistory = !ofsState.showHistory; break;
+        case MacMenuCommand::ToggleSimulator: ofsState.showSimulator = !ofsState.showSimulator; break;
+        case MacMenuCommand::ToggleMetadata: ShowMetadataEditor = !ShowMetadataEditor; break;
+        case MacMenuCommand::ToggleActionEditor: ofsState.showActionEditor = !ofsState.showActionEditor; break;
+        case MacMenuCommand::ToggleSpecialFunctions: ofsState.showSpecialFunctions = !ofsState.showSpecialFunctions; break;
+        case MacMenuCommand::ToggleWebsocketApi: ofsState.showWsApi = !ofsState.showWsApi; break;
+        case MacMenuCommand::ToggleChapters: ofsState.showChapterManager = !ofsState.showChapterManager; break;
+        case MacMenuCommand::ToggleVideo: ofsState.showVideo = !ofsState.showVideo; break;
+        case MacMenuCommand::ResetVideoPosition: playerWindow->ResetTranslationAndZoom(); break;
+        case MacMenuCommand::SetVideoMode:
+            if (context >= VideoMode::Full && context < VideoMode::TotalNumModes) {
+                VideoPlayerWindowState::State(playerWindow->StateHandle()).activeMode = static_cast<VideoMode>(context);
+            }
+            break;
+        case MacMenuCommand::ToggleMetrics: DebugMetrics = !DebugMetrics; break;
+        case MacMenuCommand::ToggleDebugLog: ofsState.showDebugLog = !ofsState.showDebugLog; break;
+#ifndef NDEBUG
+        case MacMenuCommand::ToggleImGuiDemo: DebugDemo = !DebugDemo; break;
+#else
+        case MacMenuCommand::ToggleImGuiDemo: break;
+#endif
+        case MacMenuCommand::ShowKeys: keys->ShowModal(); break;
+        case MacMenuCommand::ToggleFullscreen:
+            SetFullscreen(!(Status & OFS_Status::OFS_Fullscreen));
+            Status = (Status & OFS_Status::OFS_Fullscreen)
+                ? Status & ~OFS_Status::OFS_Fullscreen : Status | OFS_Status::OFS_Fullscreen;
+            break;
+        case MacMenuCommand::ToggleExtensionDevMode: OFS_LuaExtensions::DevMode = !OFS_LuaExtensions::DevMode; break;
+        case MacMenuCommand::ToggleExtensionLogs: OFS_LuaExtensions::ShowLogs = !OFS_LuaExtensions::ShowLogs; break;
+        case MacMenuCommand::OpenExtensionDirectory: Util::OpenFileExplorer(Util::Prefpath(OFS_LuaExtensions::ExtensionDir)); break;
+        case MacMenuCommand::ToggleExtension:
+            if (context >= 0 && context < static_cast<int>(extensions->Extensions.size())) {
+                auto& ext = extensions->Extensions[context];
+                ext.Toggle();
+                if (ext.HasError()) Util::MessageBoxAlert(TR(UNKNOWN_ERROR), ext.Error);
+            }
+            break;
+        case MacMenuCommand::ToggleExtensionWindow:
+            if (context >= 0 && context < static_cast<int>(extensions->Extensions.size()) && extensions->Extensions[context].Active) {
+                extensions->Extensions[context].WindowOpen = !extensions->Extensions[context].WindowOpen;
+            }
+            break;
+        case MacMenuCommand::OpenSpecificExtensionDirectory:
+            if (context >= 0 && context < static_cast<int>(extensions->Extensions.size())) {
+                Util::OpenFileExplorer(extensions->Extensions[context].Directory);
+            }
+            break;
+    }
+}
+#endif
+
 void OpenFunscripter::SetFullscreen(bool fullscreen)
 {
     static SDL_Rect restoreRect = { 0, 0, 1280, 720 };
@@ -2737,9 +3216,41 @@ void OpenFunscripter::CreateDockspace() noexcept
         ImGui::DockSpace(MainDockspaceID, ImVec2(0.0f, 0.0f), dockspace_flags);
     }
 
+#if defined(__APPLE__)
+    UpdateMacOSMenu();
+#else
     ShowMainMenuBar();
+#endif
 
     ImGui::End();
+}
+
+void OpenFunscripter::ShowHeatmapSettingsWindow() noexcept
+{
+    if (!ShowHeatmapSettings) {
+        return;
+    }
+
+    ImGui::OpenPopup(TR_ID("HEATMAP_SETTINGS", Tr::HEATMAP_SETTINGS));
+    if (ImGui::BeginPopupModal(TR_ID("HEATMAP_SETTINGS", Tr::HEATMAP_SETTINGS),
+            &ShowHeatmapSettings, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::InputInt(TR(WIDTH), &HeatmapSettingsWidth);
+        ImGui::InputInt(TR(HEIGHT), &HeatmapSettingsHeight);
+
+        if (ImGui::Button(TR(APPLY))) {
+            auto& settings = OpenFunscripterState::State(stateHandle).heatmapSettings;
+            settings.defaultWidth = Util::Clamp<int>(HeatmapSettingsWidth, 1, FunscriptHeatmap::MaxResolution);
+            settings.defaultHeight = Util::Clamp<int>(HeatmapSettingsHeight, 1, FunscriptHeatmap::MaxResolution);
+            ShowHeatmapSettings = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(TR(CANCEL))) {
+            ShowHeatmapSettings = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 void OpenFunscripter::ShowAboutWindow(bool* open) noexcept
