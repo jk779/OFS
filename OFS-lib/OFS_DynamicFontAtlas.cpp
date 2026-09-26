@@ -3,6 +3,9 @@
 #include "OFS_Util.h"
 #include "OFS_Profiling.h"
 #include "OFS_GL.h"
+#if defined(__APPLE__)
+#include "OFS_MacOS.h"
+#endif
 
 #include "imgui.h"
 #include "SDL_rwops.h"
@@ -78,6 +81,16 @@ static ImFont* AddFontFromFile(OFS_DynFontAtlas* builder, const char* path, floa
     return nullptr;
 }
 
+static ImFont* AddDefaultFont(OFS_DynFontAtlas* builder, float fontSize) noexcept
+{
+    auto& io = ImGui::GetIO();
+    ImFontConfig config = builder->config;
+    config.MergeMode = false;
+    config.SizePixels = fontSize;
+    config.GlyphRanges = builder->UsedRanges.Data;
+    return io.Fonts->AddFontDefault(&config);
+}
+
 void OFS_DynFontAtlas::RebuildFont(float fontSize) noexcept
 {
     OFS_PROFILE(__FUNCTION__);
@@ -95,29 +108,49 @@ void OFS_DynFontAtlas::RebuildFont(float fontSize) noexcept
         auto& io = ImGui::GetIO();
         GLuint fontTexture = (GLuint)(intptr_t)io.Fonts->TexID;
         io.Fonts->Clear();
+        io.FontDefault = nullptr;
+        ptr->DefaultFont = nullptr;
+        ptr->DefaultFont2 = nullptr;
 
         auto roboto = Util::Resource("fonts/RobotoMono-Regular.ttf");
-        auto mainFont = FontOverride.empty() ? roboto : FontOverride;
+#if defined(__APPLE__)
+        auto defaultFont = FontOverride.empty() ? OFS_MacOS::SystemFontPath(fontSize) : FontOverride;
+        if (defaultFont.empty()) {
+            LOGF_WARN("%s", "Unable to resolve the macOS system font; using bundled Roboto Mono");
+        }
+#else
+        auto defaultFont = roboto;
+#endif
+        auto mainFont = FontOverride.empty() ? defaultFont : FontOverride;
         auto fontawesome = Util::Resource("fonts/fontawesome-webfont.ttf");
         auto notoCJK = Util::Resource("fonts/NotoSansCJKjp-Regular.otf");
 
         ImFont* font = nullptr;
+        std::string resolvedMainFont;
+        bool usingBuiltInFallback = false;
         {
             OFS_PROFILE("Main font");
-            font = AddFontFromFile(ptr, mainFont.c_str(), fontSize, false);
+            if (!mainFont.empty()) {
+                font = AddFontFromFile(ptr, mainFont.c_str(), fontSize, false);
+            }
             if (!font) {
-                LOGF_ERROR("Failed to load \"%s\"", mainFont.c_str());
+                if (!mainFont.empty()) {
+                    LOGF_ERROR("Failed to load \"%s\"", mainFont.c_str());
+                }
                 font = AddFontFromFile(ptr, roboto.c_str(), fontSize, false);
-                if (!font) {
+                if (font) {
+                    resolvedMainFont = roboto;
+                } else {
                     LOGF_ERROR("Failed to load \"%s\"", roboto.c_str());
-                    // fallback to default font
-                    io.Fonts->Clear();
-                    io.Fonts->AddFontDefault();
-                    goto default_font_end;
+                    font = AddDefaultFont(ptr, fontSize);
+                    usingBuiltInFallback = font != nullptr;
                 }
             }
             io.FontDefault = font;
             ptr->DefaultFont = font;
+            if (font && resolvedMainFont.empty() && !usingBuiltInFallback) {
+                resolvedMainFont = mainFont;
+            }
         }
         {
             OFS_PROFILE("Load fontawesome font");
@@ -135,11 +168,17 @@ void OFS_DynFontAtlas::RebuildFont(float fontSize) noexcept
         }
         {
             OFS_PROFILE("Load main font (2x)");
-            font = AddFontFromFile(ptr, mainFont.c_str(), fontSize * 2.f, false);
+            if (usingBuiltInFallback) {
+                font = AddDefaultFont(ptr, fontSize * 2.f);
+            } else if (!resolvedMainFont.empty()) {
+                font = AddFontFromFile(ptr, resolvedMainFont.c_str(), fontSize * 2.f, false);
+            }
+            if (!font) {
+                LOGF_WARN("%s", "Failed to load the 2x main font; using the regular main font");
+                font = ptr->DefaultFont;
+            }
             ptr->DefaultFont2 = font;
         }
-
-default_font_end:
         unsigned char* pixels;
         int width, height;
         double fontBuildDuration;

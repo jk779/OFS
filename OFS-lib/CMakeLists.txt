@@ -258,5 +258,9 @@ elseif(APPLE)
 	)
 
 	find_library(OFS_APPKIT_FRAMEWORK AppKit REQUIRED)
-	target_link_libraries(${PROJECT_NAME} PUBLIC "${OFS_APPKIT_FRAMEWORK}")
+	find_library(OFS_CORETEXT_FRAMEWORK CoreText REQUIRED)
+	target_link_libraries(${PROJECT_NAME} PUBLIC
+		"${OFS_APPKIT_FRAMEWORK}"
+		"${OFS_CORETEXT_FRAMEWORK}"
+	)
 endif()

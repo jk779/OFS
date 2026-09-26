@@ -31,7 +31,7 @@ NOTARY_PROFILE ?=
 help:
 	@printf '%s\n' \
 		'OpenFunscripter native macOS (Apple Silicon) targets:' \
-		'  make adhoc          Build Release arm64 with bundled libmpv and local ad-hoc signing.' \
+		'  make adhoc          Build Release arm64 with bundled libmpv, ad-hoc sign, and verify.' \
 		'  make local          Alias for adhoc.' \
 		'  make prepare-release Clean/rebuild Release arm64, Developer ID sign, verify, and create the pre-notary ZIP.' \
 		'  make notarize        Revalidate the prepared app/ZIP, submit, staple, validate, and create the final ZIP.' \

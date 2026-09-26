@@ -54,14 +54,14 @@ if(APPLE)
 			MACOSX_PACKAGE_LOCATION Resources)
 	target_sources(${PROJECT_NAME} PRIVATE "${OFS_MACOS_ICON}")
 	target_compile_definitions(${PROJECT_NAME} PRIVATE
-		"OFS_MACOS_DISPLAY_TITLE=\"OpenFunscripter v3.2.0 — macOS v1.0\"")
+		"OFS_MACOS_DISPLAY_TITLE=\"OpenFunscripter v3.2.0 — macOS build v1.0.0\"")
 
 	set_target_properties(${PROJECT_NAME} PROPERTIES
 		MACOSX_BUNDLE_BUNDLE_NAME "OpenFunscripter"
 		MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.jk779.OpenFunscripter"
 		MACOSX_BUNDLE_BUNDLE_VERSION "320.1"
 		MACOSX_BUNDLE_SHORT_VERSION_STRING "3.2.0"
-		MACOSX_BUNDLE_INFO_STRING "OpenFunscripter v3.2.0 — macOS v1.0"
+		MACOSX_BUNDLE_INFO_STRING "OpenFunscripter v3.2.0 — macOS build v1.0.0"
 		MACOSX_BUNDLE_ICON_FILE "OpenFunscripter.icns"
 	)
 endif()

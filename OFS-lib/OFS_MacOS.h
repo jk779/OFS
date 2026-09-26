@@ -47,6 +47,7 @@ using MenuTrackingHandler = std::function<void(bool opening)>;
 
 bool OpenURL(const std::string& url) noexcept;
 bool RevealInFinder(const std::string& path) noexcept;
+std::string SystemFontPath(float pointSize) noexcept;
 void UpdateMainMenu(const std::vector<Menu>& menus, MenuActionHandler handler) noexcept;
 void SetMenuTrackingHandler(MenuTrackingHandler handler) noexcept;
 void ClearMainMenuHandler() noexcept;

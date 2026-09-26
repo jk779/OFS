@@ -1,6 +1,7 @@
 #include "OFS_MacOS.h"
 
 #import <AppKit/AppKit.h>
+#import <CoreText/CoreText.h>
 #import <SDL_syswm.h>
 
 namespace {
@@ -159,6 +160,42 @@ bool RevealInFinder(const std::string& path) noexcept
         }
 
         return [[NSWorkspace sharedWorkspace] selectFile:pathString inFileViewerRootedAtPath:@""];
+    }
+}
+
+std::string SystemFontPath(float pointSize) noexcept
+{
+    @autoreleasepool {
+        CTFontRef systemFont = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, pointSize, nullptr);
+        if (systemFont == nullptr) {
+            return {};
+        }
+
+        CFTypeRef fontURLAttribute = CTFontCopyAttribute(systemFont, kCTFontURLAttribute);
+        CFRelease(systemFont);
+        if (fontURLAttribute == nullptr || CFGetTypeID(fontURLAttribute) != CFURLGetTypeID()) {
+            if (fontURLAttribute != nullptr) {
+                CFRelease(fontURLAttribute);
+            }
+            return {};
+        }
+
+        CFStringRef fontPath = CFURLCopyFileSystemPath(static_cast<CFURLRef>(fontURLAttribute), kCFURLPOSIXPathStyle);
+        CFRelease(fontURLAttribute);
+        if (fontPath == nullptr) {
+            return {};
+        }
+
+        const CFIndex bufferSize = CFStringGetMaximumSizeOfFileSystemRepresentation(fontPath);
+        if (bufferSize <= 0) {
+            CFRelease(fontPath);
+            return {};
+        }
+
+        std::vector<char> pathBuffer(static_cast<size_t>(bufferSize));
+        const bool converted = CFStringGetFileSystemRepresentation(fontPath, pathBuffer.data(), bufferSize);
+        CFRelease(fontPath);
+        return converted ? std::string(pathBuffer.data()) : std::string{};
     }
 }
 

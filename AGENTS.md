@@ -9,32 +9,20 @@ newer, and libmpv headers plus `libmpv.dylib`. The verified libmpv provider is
 Homebrew `mpv` at `/opt/homebrew/opt/mpv`; it is needed on the build machine,
 not on target Macs when bundling is enabled.
 
-Initialize submodules and build from the repository root:
+Initialize submodules and run the canonical local macOS build from the
+repository root:
 
 ```sh
 git submodule update --init --recursive
-
-cmake -S . -B build/macos-arm64 -G "Unix Makefiles" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_OSX_ARCHITECTURES=arm64 \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-  -DHAVE_GCC_WERROR_DECLARATION_AFTER_STATEMENT=OFF \
-  -DOFS_MPV_ROOT=/opt/homebrew/opt/mpv \
-  -DOFS_BUNDLE_MACOS_LIBMPV=ON \
-  -DOFS_MACOS_ADHOC_SIGN=ON
-cmake --build build/macos-arm64 --config Release --parallel 4
+make adhoc
 ```
 
-The output is `bin/OpenFunscripter.app`. The build copies libmpv and its
-non-system dylib dependencies into `Contents/Frameworks`, rewrites their load
-paths to use `@rpath`, and ad-hoc signs the application for local testing.
-Ad-hoc signing is not Developer ID signing or notarization.
-
-Verify a local bundle with:
-
-```sh
-codesign --verify --deep --strict --verbose=2 bin/OpenFunscripter.app
-```
+The `make adhoc` target configures and builds a Release arm64 app with bundled
+libmpv, ad-hoc signs it for local testing, and verifies the bundle with strict
+deep `codesign` checks. The output is `bin/OpenFunscripter.app`. Bundling copies
+libmpv and its non-system dylib dependencies into `Contents/Frameworks` and
+rewrites their load paths to use `@rpath`. Ad-hoc signing is not Developer ID
+signing or notarization.
 
 ## Developer ID release invariants
 
@@ -77,6 +65,6 @@ codesign --verify --deep --strict --verbose=2 bin/OpenFunscripter.app
   thread. Wakeup and render callbacks use coalesced pending notifications, not
   frame counters. Do not enable mpv advanced render control without first
   changing the threading model.
-- The macOS display identity is `OpenFunscripter v3.2.0 — macOS v1.0`.
+- The macOS display identity is `OpenFunscripter v3.2.0 — macOS build v1.0.0`.
   `CFBundleShortVersionString` is `3.2.0` and `CFBundleVersion` is `320.1`.
   Git revision details remain available in the About and diagnostic UI.
