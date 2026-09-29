@@ -378,6 +378,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_0, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad0 },
+                { ImGuiMod_None, ImGuiKey_GraveAccent },
             });
         keys->RegisterAction(
             { "action_10",
@@ -385,6 +386,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_10, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad1 },
+                { ImGuiMod_None, ImGuiKey_1 },
             });
         keys->RegisterAction(
             { "action_20",
@@ -392,6 +394,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_20, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad2 },
+                { ImGuiMod_None, ImGuiKey_2 },
             });
         keys->RegisterAction(
             { "action_30",
@@ -399,6 +402,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_30, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad3 },
+                { ImGuiMod_None, ImGuiKey_3 },
             });
         keys->RegisterAction(
             { "action_40",
@@ -406,6 +410,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_40, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad4 },
+                { ImGuiMod_None, ImGuiKey_4 },
             });
         keys->RegisterAction(
             { "action_50",
@@ -413,6 +418,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_50, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad5 },
+                { ImGuiMod_None, ImGuiKey_5 },
             });
         keys->RegisterAction(
             { "action_60",
@@ -420,6 +426,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_60, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad6 },
+                { ImGuiMod_None, ImGuiKey_6 },
             });
         keys->RegisterAction(
             { "action_70",
@@ -427,6 +434,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_70, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad7 },
+                { ImGuiMod_None, ImGuiKey_7 },
             });
         keys->RegisterAction(
             { "action_80",
@@ -434,6 +442,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_80, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad8 },
+                { ImGuiMod_None, ImGuiKey_8 },
             });
         keys->RegisterAction(
             { "action_90",
@@ -441,6 +450,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_90, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_Keypad9 },
+                { ImGuiMod_None, ImGuiKey_9 },
             });
         keys->RegisterAction(
             { "action_100",
@@ -448,6 +458,7 @@ void OpenFunscripter::registerBindings()
             Tr::ACTION_ACTION_100, "Actions",
             {
                 { ImGuiMod_None, ImGuiKey_KeypadDivide },
+                { ImGuiMod_None, ImGuiKey_0 },
             });
     }
 
