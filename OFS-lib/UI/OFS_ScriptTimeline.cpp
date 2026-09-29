@@ -50,6 +50,11 @@ void ScriptTimeline::updateSelection(const OverlayDrawingCtx& ctx, bool clear) n
 
 void ScriptTimeline::FfmpegAudioProcessingFinished(const WaveformProcessingFinishedEvent* ev) noexcept
 {
+	if (Wave.data.SampleCount() == 0) {
+		ShowAudioWaveform = false;
+		LOG_ERROR("Audio processing reported success without waveform samples.");
+		return;
+	}
 	ShowAudioWaveform = true;
 	// Update cache
 	auto& waveCache = WaveformState::StaticStateSlow();
@@ -462,16 +467,17 @@ void ScriptTimeline::ShowScriptPositions(
 
 			auto updateAudioWaveformThread = [](void* userData) -> int {
 				auto& ctx = *((ScriptTimeline*)userData);
-				std::error_code ec;
 				auto ffmpegPath = Util::FfmpegPath();
 				auto outputPath = Util::Prefpath("tmp");
 				if (!Util::CreateDirectories(outputPath)) {
+					LOGF_ERROR("Could not create the temporary directory for waveform audio: '%s'.", outputPath.c_str());
 					return 0;
 				}
 				
 				outputPath = (Util::PathFromString(outputPath) / "audio.flac").u8string();
-				bool succ = ctx.Wave.data.GenerateAndLoadFlac(ffmpegPath.u8string(), ctx.videoPath, outputPath);
-				EV::Enqueue<WaveformProcessingFinishedEvent>();
+				if (ctx.Wave.data.GenerateAndLoadFlac(ffmpegPath.u8string(), ctx.videoPath, outputPath)) {
+					EV::Enqueue<WaveformProcessingFinishedEvent>();
+				}
 				return 0;
 			};
 			if (ImGui::BeginMenu(TR_ID("WAVEFORM", Tr::WAVEFORM))) {
@@ -481,7 +487,8 @@ void ScriptTimeline::ShowScriptPositions(
 					ImGui::ColorEdit3(TR(COLOR), &Wave.WaveformColor.Value.x, ImGuiColorEditFlags_NoInputs);
 					ImGui::EndMenu();
 				}
-				if (ImGui::MenuItem(TR(ENABLE_WAVEFORM), NULL, &ShowAudioWaveform, !Wave.data.BusyGenerating())) {}
+				if (ImGui::MenuItem(TR(ENABLE_WAVEFORM), NULL, &ShowAudioWaveform,
+					!Wave.data.BusyGenerating() && Wave.data.SampleCount() > 0)) {}
 
 				if(Wave.data.BusyGenerating()) {
 					ImGui::MenuItem(TR(PROCESSING_AUDIO), NULL, false, false);
@@ -501,8 +508,10 @@ void ScriptTimeline::ShowScriptPositions(
 						}
 						else 
 						{
+							Wave.data.Clear();
 							auto handle = SDL_CreateThread(updateAudioWaveformThread, "OFS_GenWaveform", this);
-							SDL_DetachThread(handle);
+							if (handle) SDL_DetachThread(handle);
+							else LOGF_ERROR("Could not start waveform processing thread: %s", SDL_GetError());
 						}
 					}
 				}

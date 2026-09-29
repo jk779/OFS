@@ -87,6 +87,11 @@ if(APPLE)
 			"OFS_BUNDLE_MACOS_LIBMPV is enabled, but no libmpv.dylib was discovered. "
 			"Set OFS_MPV_ROOT or disable OFS_BUNDLE_MACOS_LIBMPV.")
 	endif()
+	if(OFS_BUNDLE_MACOS_LIBMPV AND NOT OFS_FFMPEG_EXECUTABLE)
+		message(FATAL_ERROR
+			"OFS_BUNDLE_MACOS_LIBMPV is enabled, but no ffmpeg executable was discovered. "
+			"Put ffmpeg on PATH or set OFS_FFMPEG_EXECUTABLE.")
+	endif()
 
 	# This is intentionally an always-run target. The Homebrew dependency graph
 	# and the existing app bundle are external to CMake's timestamp graph, so a
@@ -96,6 +101,7 @@ if(APPLE)
 			"-DOFS_APP_EXECUTABLE=$<TARGET_FILE:${PROJECT_NAME}>"
 			"-DOFS_BUNDLE_ENABLED=${OFS_BUNDLE_MACOS_LIBMPV}"
 			"-DOFS_MPV_LIBRARY=${OFS_MPV_LIBRARY}"
+			"-DOFS_FFMPEG_EXECUTABLE=${OFS_FFMPEG_EXECUTABLE}"
 			"-DOFS_ADHOC_SIGN=${OFS_MACOS_ADHOC_SIGN}"
 			-P "${CMAKE_SOURCE_DIR}/cmake/BundleMacOSDependencies.cmake"
 		DEPENDS

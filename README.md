@@ -23,6 +23,7 @@ Required tools and libraries are:
 - Xcode Command Line Tools (including AppleClang)
 - CMake 3.16 or newer
 - libmpv headers and the `libmpv.dylib` library
+- the `ffmpeg` CLI on the build machine
 
 The commands below use Homebrew's `mpv` package at `/opt/homebrew/opt/mpv` as
 the libmpv provider. This dependency is required only on the build machine.
@@ -41,7 +42,11 @@ generator, and the compatibility options needed by the bundled dependencies.
 Override these with exported variables or command-line assignments; run
 `make help` for the complete list. `OFS_BUNDLE_MACOS_LIBMPV` copies libmpv and
 its non-system dylib dependencies into the application bundle and rewrites
-their load paths. A target Mac therefore does not need Homebrew installed.
+their load paths. The `ffmpeg` CLI is discovered from the build `PATH` or can
+be selected with `FFMPEG_EXECUTABLE=/path/to/ffmpeg`; it is bundled as
+`Contents/Helpers/ffmpeg`, with its non-system dylib dependencies in
+`Contents/Frameworks`. A target Mac therefore does not need Homebrew installed
+or have Homebrew on the app's `PATH`.
 
 The generated application is `bin/OpenFunscripter.app`. The ad-hoc signature
 is suitable for local testing only; it is not Developer ID signing or
@@ -69,6 +74,13 @@ after an accepted submission does it staple and validate the app, require
 `release/macos-arm64/OpenFunscripter-macos-arm64-notarized.zip`. `make release`
 runs `prepare-release` and then `notarize` sequentially.
 
+The current macOS bundle uses FFmpeg 9.0.2, built with `--enable-gpl` and
+`--enable-version3` (GPL-3.0-or-later), and mpv 0.41.0. Sources: [FFmpeg 9.0.2](https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz)
+(SHA-256 `8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e`) and
+[mpv 0.41.0](https://github.com/mpv-player/mpv/releases/tag/v0.41.0). Put both
+source links and the FFmpeg checksum in the GitHub release description next
+to the app ZIP. See [FFmpeg's licensing guidance](https://ffmpeg.org/legal.html).
+
 Export the variables so Make inherits them in each step. `SIGNING_IDENTITY`
 is required by `prepare-release` and must match an installed Developer ID
 Application identity. `NOTARY_PROFILE` is required by `notarize` and must name
@@ -76,6 +88,7 @@ an existing Keychain-stored notarytool profile. `release` preflights both:
 
 ```sh
 export MPV_ROOT=/opt/homebrew/opt/mpv       # optional override
+export FFMPEG_EXECUTABLE=/path/to/ffmpeg    # optional override; defaults to PATH discovery
 export BUILD_JOBS=4                         # optional override
 export SIGNING_IDENTITY='<CERTIFICATE_SHA1>' # or full Developer ID Application name
 export NOTARY_PROFILE='<NOTARYTOOL_KEYCHAIN_PROFILE>'

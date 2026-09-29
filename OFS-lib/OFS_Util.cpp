@@ -3,6 +3,7 @@
 #include "OFS_EventSystem.h"
 
 #include <filesystem>
+#include <cstdlib>
 #include "SDL_rwops.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -15,6 +16,7 @@
 #include <shellapi.h>
 #elif defined(__APPLE__)
 #include "OFS_MacOS.h"
+#include <unistd.h>
 #endif
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -380,6 +382,45 @@ std::filesystem::path Util::FfmpegPath() noexcept
 {
 #if WIN32
     return Util::PathFromString(Util::Prefpath("ffmpeg.exe"));
+#elif defined(__APPLE__)
+    auto executablePath = [](const std::filesystem::path& path) noexcept {
+        std::error_code ec;
+        return std::filesystem::is_regular_file(path, ec) && ::access(path.c_str(), X_OK) == 0;
+    };
+
+    // SDL normally returns Contents/Resources for a bundled app, and some
+    // configurations return Contents/MacOS. In either case, the helper lives
+    // beside the app's MacOS directory at Contents/Helpers/ffmpeg.
+    auto basePath = Util::Basepath().lexically_normal();
+    if (basePath.filename().empty()) {
+        basePath = basePath.parent_path();
+    }
+    const auto baseDirectory = basePath.filename().u8string();
+    if (baseDirectory == "Resources" || baseDirectory == "MacOS") {
+        const auto bundledHelper = basePath.parent_path() / "Helpers" / "ffmpeg";
+        if (executablePath(bundledHelper)) {
+            return bundledHelper.lexically_normal();
+        }
+    }
+
+    if (const char* pathValue = std::getenv("PATH")) {
+        const std::string paths(pathValue);
+        size_t start = 0;
+        while (start <= paths.size()) {
+            const size_t end = paths.find(':', start);
+            const std::string directory = paths.substr(start, end == std::string::npos ? end : end - start);
+            auto candidate = std::filesystem::path(directory) / "ffmpeg";
+            if (executablePath(candidate)) {
+                std::error_code ec;
+                auto absolutePath = std::filesystem::absolute(candidate, ec);
+                return ec ? candidate : absolutePath;
+            }
+            if (end == std::string::npos) break;
+            start = end + 1;
+        }
+    }
+
+    return {};
 #else
     auto ffmpegPath = std::filesystem::path("ffmpeg");
     return ffmpegPath;

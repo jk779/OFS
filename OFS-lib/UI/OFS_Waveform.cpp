@@ -9,6 +9,9 @@
 
 #include "subprocess.h"
 
+#include <array>
+#include <filesystem>
+
 bool OFS_Waveform::LoadFlac(const std::string& output) noexcept
 {
 	drflac* flac = drflac_open_file(output.c_str(), NULL);
@@ -42,6 +45,7 @@ bool OFS_Waveform::LoadFlac(const std::string& output) noexcept
 	}
 	drflac_close(flac);
 	samples.shrink_to_fit();
+	if (samples.empty()) return false;
 
 	if(std::abs(minSample) > std::abs(maxSample)) {
 		maxSample = std::abs(minSample);
@@ -60,44 +64,139 @@ bool OFS_Waveform::LoadFlac(const std::string& output) noexcept
 bool OFS_Waveform::GenerateAndLoadFlac(const std::string& ffmpegPath, const std::string& videoPath, const std::string& output) noexcept
 {
 	generating = true;
+	auto outputFile = Util::PathFromString(output);
+	auto removeOutput = [&]() noexcept {
+		std::error_code ec;
+		std::filesystem::remove(outputFile, ec);
+	};
+	auto fail = [&]() noexcept {
+		removeOutput();
+		generating = false;
+		return false;
+	};
 
-	std::array<const char*, 11> args =
+	if (ffmpegPath.empty()) {
+		LOG_ERROR("Could not find ffmpeg. Install ffmpeg or add it to PATH, then update the waveform.");
+		return fail();
+	}
+	if (videoPath.empty()) {
+		LOG_ERROR("Could not generate waveform: no video is loaded.");
+		return fail();
+	}
+	std::error_code removeError;
+	std::filesystem::remove(outputFile, removeError);
+	if (removeError) {
+		LOGF_ERROR("Could not remove old waveform audio '%s': %s", output.c_str(), removeError.message().c_str());
+		return fail();
+	}
+
+	std::array<const char*, 14> args =
 	{
 		ffmpegPath.c_str(),
 		"-y",
+		"-hide_banner",
+		"-nostdin",
+		"-nostats",
 		"-loglevel",
-		"quiet",
+		"error",
 		"-i", videoPath.c_str(),
 		"-vn",
 		"-ac", "1",
 		output.c_str(),
 		nullptr
 	};
+	constexpr size_t MaxStderrBytes = 2048;
+	std::array<char, MaxStderrBytes> stderrBuffer{};
+	size_t stderrSize = 0;
+	size_t stderrNext = 0;
+	bool stderrTruncated = false;
 	struct subprocess_s proc;
-	if(subprocess_create(args.data(), subprocess_option_no_window, &proc) != 0) {
-		generating = false; 
-		return false; 
+	if(subprocess_create(args.data(), subprocess_option_no_window | subprocess_option_enable_async, &proc) != 0) {
+		LOGF_ERROR("Could not start ffmpeg at '%s' while generating the waveform.", ffmpegPath.c_str());
+		return fail();
 	}
 
+	if (proc.stdin_file) {
+		fclose(proc.stdin_file);
+		proc.stdin_file = nullptr;
+	}
 	if(proc.stdout_file) 
 	{
 		fclose(proc.stdout_file);
 		proc.stdout_file = nullptr;
 	}
-	
-	if(proc.stderr_file) 
-	{
-		fclose(proc.stderr_file);
-		proc.stderr_file = nullptr;
+
+	char stderrChunk[512];
+	unsigned bytesRead = 0;
+	while ((bytesRead = subprocess_read_stderr(&proc, stderrChunk, sizeof(stderrChunk))) > 0) {
+		for (unsigned i = 0; i < bytesRead; ++i) {
+			stderrBuffer[stderrNext] = stderrChunk[i];
+			stderrNext = (stderrNext + 1) % stderrBuffer.size();
+			if (stderrSize < stderrBuffer.size()) ++stderrSize;
+			else stderrTruncated = true;
+		}
+	}
+	auto getStderrDiagnostic = [&]() {
+		std::string diagnostic;
+		diagnostic.reserve(stderrSize + 40);
+		const size_t start = stderrTruncated ? stderrNext : 0;
+		for (size_t i = 0; i < stderrSize; ++i) {
+			const char ch = stderrBuffer[(start + i) % stderrBuffer.size()];
+			diagnostic += (ch == '\0') ? ' ' : ch;
+		}
+		if (stderrTruncated) {
+			const size_t firstLineEnd = diagnostic.find('\n');
+			if (firstLineEnd != std::string::npos) diagnostic.erase(0, firstLineEnd + 1);
+		}
+		auto redactPath = [&](const std::string& path) {
+			if (path.empty()) return;
+			size_t position = 0;
+			while ((position = diagnostic.find(path, position)) != std::string::npos) {
+				diagnostic.replace(position, path.size(), "[path]");
+				position += 6;
+			}
+		};
+		redactPath(videoPath);
+		redactPath(output);
+		if (stderrTruncated && !diagnostic.empty()) {
+			diagnostic.insert(0, "[earlier ffmpeg output omitted]\n");
+		}
+		return diagnostic;
+	};
+
+	int return_code = -1;
+	const int join_result = subprocess_join(&proc, &return_code);
+	subprocess_destroy(&proc);
+	if (join_result != 0) {
+		auto diagnostic = getStderrDiagnostic();
+		if (diagnostic.empty()) {
+			LOGF_ERROR("Could not wait for ffmpeg at '%s' while generating the waveform.", ffmpegPath.c_str());
+		} else {
+			LOGF_ERROR("Could not wait for ffmpeg at '%s' while generating the waveform. stderr:\n%s",
+				ffmpegPath.c_str(), diagnostic.c_str());
+		}
+		return fail();
+	}
+	if (return_code != 0) {
+		auto diagnostic = getStderrDiagnostic();
+		if (diagnostic.empty()) {
+			LOGF_ERROR("ffmpeg at '%s' failed to extract audio for the waveform (exit code %d).", ffmpegPath.c_str(), return_code);
+		} else {
+			LOGF_ERROR("ffmpeg at '%s' failed to extract audio for the waveform (exit code %d). stderr:\n%s",
+				ffmpegPath.c_str(), return_code, diagnostic.c_str());
+		}
+		return fail();
 	}
 
-	int return_code;
-	subprocess_join(&proc, &return_code);
-	subprocess_destroy(&proc);
-
 	if (!LoadFlac(output)) {
-		generating = false;
-		return false;
+		auto diagnostic = getStderrDiagnostic();
+		if (diagnostic.empty()) {
+			LOGF_ERROR("ffmpeg at '%s' did not produce readable audio for the waveform.", ffmpegPath.c_str());
+		} else {
+			LOGF_ERROR("ffmpeg at '%s' did not produce readable audio for the waveform. stderr:\n%s",
+				ffmpegPath.c_str(), diagnostic.c_str());
+		}
+		return fail();
 	}
 
 	generating = false;

@@ -211,6 +211,24 @@ elseif(APPLE)
 	# libmpv is loaded at runtime. The headers are required to compile, while
 	# an optional discovered dylib path is passed to the runtime loader.
 	set(OFS_MPV_ROOT "" CACHE PATH "Root directory of a libmpv installation")
+	set(OFS_FFMPEG_EXECUTABLE "" CACHE FILEPATH
+		"Path to the ffmpeg CLI bundled with the macOS app")
+	if(NOT OFS_FFMPEG_EXECUTABLE)
+		unset(_OFS_FFMPEG_DISCOVERED CACHE)
+		find_program(_OFS_FFMPEG_DISCOVERED NAMES ffmpeg)
+		if(_OFS_FFMPEG_DISCOVERED)
+			set(OFS_FFMPEG_EXECUTABLE "${_OFS_FFMPEG_DISCOVERED}" CACHE FILEPATH
+				"Path to the ffmpeg CLI bundled with the macOS app" FORCE)
+		endif()
+	endif()
+	if(OFS_BUNDLE_MACOS_LIBMPV)
+		if(NOT OFS_FFMPEG_EXECUTABLE OR NOT EXISTS "${OFS_FFMPEG_EXECUTABLE}")
+			message(FATAL_ERROR
+				"The ffmpeg CLI is required when OFS_BUNDLE_MACOS_LIBMPV is enabled. "
+				"Put ffmpeg on PATH or set OFS_FFMPEG_EXECUTABLE to its path.")
+		endif()
+		get_filename_component(OFS_FFMPEG_EXECUTABLE "${OFS_FFMPEG_EXECUTABLE}" REALPATH)
+	endif()
 
 	find_path(MPV_INCLUDE_DIR
 		NAMES mpv/client.h

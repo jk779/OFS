@@ -8,6 +8,7 @@ SHELL := /bin/sh
 CMAKE ?= cmake
 CMAKE_GENERATOR ?= Unix Makefiles
 MPV_ROOT ?= /opt/homebrew/opt/mpv
+FFMPEG_EXECUTABLE ?=
 BUILD_JOBS ?= 4
 
 LOCAL_BUILD_DIR := build/macos-arm64
@@ -27,13 +28,15 @@ SIGNING_IDENTITY ?=
 NOTARY_PROFILE ?=
 
 .PHONY: help check-platform validate-build-vars validate-signing validate-notary \
-	local-config adhoc local clean-release release-config prepare-release notarize release check-notarization
+	local-config adhoc local incremental clean-release \
+	release-config prepare-release notarize release check-notarization
 
 help:
 	@printf '%s\n' \
 		'OpenFunscripter native macOS (Apple Silicon) targets:' \
 		'  make adhoc          Build Release arm64 with bundled libmpv, ad-hoc sign, and verify.' \
 		'  make local          Alias for adhoc.' \
+		'  make incremental    Run the incremental CMake build on the existing local configuration.' \
 		'  make prepare-release Clean/rebuild Release arm64, Developer ID sign, verify, and create the pre-notary ZIP.' \
 		'  make notarize        Revalidate the prepared app/ZIP, submit, staple, validate, and create the final ZIP.' \
 		'  make release         Run prepare-release, then notarize, sequentially.' \
@@ -46,6 +49,7 @@ help:
 		'' \
 		'Overrides:' \
 		'  MPV_ROOT=...           libmpv installation root (default: /opt/homebrew/opt/mpv).' \
+		'  FFMPEG_EXECUTABLE=...  ffmpeg CLI to bundle (default: discover via PATH).' \
 		'  BUILD_JOBS=...         CMake parallel jobs (default: 4).' \
 		'  CMAKE=...              CMake executable (default: cmake).' \
 		'  CMAKE_GENERATOR=...     CMake generator (default: Unix Makefiles).' \
@@ -105,6 +109,7 @@ local-config: validate-build-vars
 		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 		-DHAVE_GCC_WERROR_DECLARATION_AFTER_STATEMENT=OFF \
 		-DOFS_MPV_ROOT="$(MPV_ROOT)" \
+		-DOFS_FFMPEG_EXECUTABLE="$(FFMPEG_EXECUTABLE)" \
 		-DOFS_BUNDLE_MACOS_LIBMPV=ON \
 		-DOFS_MACOS_ADHOC_SIGN=ON
 
@@ -118,6 +123,9 @@ adhoc: local-config
 	@printf '%s\n' 'Local ad-hoc build complete: $(APP) (not Developer ID signed or notarized).'
 
 local: adhoc
+
+incremental:
+	$(CMAKE) --build "$(LOCAL_BUILD_DIR)" --config Release --parallel "$(BUILD_JOBS)"
 
 clean-release: check-platform
 	@printf '%s\n' 'Removing the separate release build and artifact directories...'
@@ -134,6 +142,7 @@ release-config: clean-release validate-build-vars
 		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 		-DHAVE_GCC_WERROR_DECLARATION_AFTER_STATEMENT=OFF \
 		-DOFS_MPV_ROOT="$(MPV_ROOT)" \
+		-DOFS_FFMPEG_EXECUTABLE="$(FFMPEG_EXECUTABLE)" \
 		-DOFS_BUNDLE_MACOS_LIBMPV=ON \
 		-DOFS_MACOS_ADHOC_SIGN=OFF
 
@@ -149,6 +158,11 @@ prepare-release: validate-signing release-config
 	@set -eu; \
 		frameworks="$(APP)/Contents/Frameworks"; \
 		find "$$frameworks" -depth -type f -name '*.dylib' -exec sh -c 'for dylib do if file "$$dylib" | grep -q "Mach-O"; then codesign --verify --strict --verbose=2 "$$dylib"; fi; done' sh {} +
+	@set -eu; \
+		helper="$(APP)/Contents/Helpers/ffmpeg"; \
+		test -x "$$helper" || { echo "Bundled ffmpeg helper is missing or not executable: $$helper" >&2; exit 2; }; \
+		codesign --force --options runtime --timestamp --sign "$(SIGNING_IDENTITY)" "$$helper"; \
+		codesign --verify --strict --verbose=2 "$$helper"
 	@printf '%s\n' 'Signing the outer app with the checked-in LuaJIT entitlement...'
 	codesign --force --options runtime --timestamp --entitlements "$(ENTITLEMENTS)" --sign "$(SIGNING_IDENTITY)" "$(APP)"
 	codesign --verify --deep --strict --verbose=2 "$(APP)"
@@ -194,6 +208,10 @@ notarize: validate-notary
 	@set -eu; \
 		frameworks="$(APP)/Contents/Frameworks"; \
 		find "$$frameworks" -depth -type f -name '*.dylib' -exec sh -c 'for dylib do if file "$$dylib" | grep -q "Mach-O"; then codesign --verify --strict --verbose=2 "$$dylib"; fi; done' sh {} +
+	@set -eu; \
+		helper="$(APP)/Contents/Helpers/ffmpeg"; \
+		test -x "$$helper" || { echo "Prepared ffmpeg helper is missing or not executable: $$helper" >&2; exit 2; }; \
+		codesign --verify --strict --verbose=2 "$$helper"
 	codesign --verify --deep --strict --verbose=2 "$(APP)"
 	@printf '%s\n' 'Prepared app, nested signatures, outer signature, and hashes are valid.'
 	@rm -f "$(FINAL_ZIP)"
