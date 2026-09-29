@@ -542,7 +542,14 @@ void OFS_VideoplayerControls::DrawTimeline() noexcept
         Util::FormatTime(timeBuf1, sizeof(timeBuf1), time, true);
         Util::FormatTime(timeBuf2, sizeof(timeBuf2), player->Duration(), true);
 
+        auto monoFont = OFS_DynFontAtlas::MonoFont;
+        if (monoFont) {
+            ImGui::PushFont(monoFont);
+        }
         ImGui::Text(" %s / %s (x%.03f)", timeBuf1, timeBuf2, actualPlaybackSpeed);
+        if (monoFont) {
+            ImGui::PopFont();
+        }
         ImGui::NextColumn();
     }
 

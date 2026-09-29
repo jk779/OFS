@@ -18,6 +18,7 @@ OFS_DynFontAtlas* OFS_DynFontAtlas::ptr = nullptr;
 
 ImFont* OFS_DynFontAtlas::DefaultFont = nullptr;
 ImFont* OFS_DynFontAtlas::DefaultFont2 = nullptr;
+ImFont* OFS_DynFontAtlas::MonoFont = nullptr;
 
 std::string OFS_DynFontAtlas::FontOverride;
 
@@ -29,6 +30,8 @@ OFS_DynFontAtlas::OFS_DynFontAtlas() noexcept
 
     auto& io = ImGui::GetIO();
     builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
+    // Keep every character used by the changing video time display in the atlas.
+    builder.AddText(" 0123456789:./x()");
 
     builder.AddText(ICON_FOLDER_OPEN);
     builder.AddText(ICON_VOLUME_UP);
@@ -111,6 +114,7 @@ void OFS_DynFontAtlas::RebuildFont(float fontSize) noexcept
         io.FontDefault = nullptr;
         ptr->DefaultFont = nullptr;
         ptr->DefaultFont2 = nullptr;
+        ptr->MonoFont = nullptr;
 
         auto roboto = Util::Resource("fonts/RobotoMono-Regular.ttf");
 #if defined(__APPLE__)
@@ -178,6 +182,13 @@ void OFS_DynFontAtlas::RebuildFont(float fontSize) noexcept
                 font = ptr->DefaultFont;
             }
             ptr->DefaultFont2 = font;
+        }
+        {
+            OFS_PROFILE("Load video time monospace font");
+            ptr->MonoFont = AddFontFromFile(ptr, roboto.c_str(), fontSize, false);
+            if (!ptr->MonoFont) {
+                LOGF_WARN("Failed to load \"%s\" for the video time display; using the main font", roboto.c_str());
+            }
         }
         unsigned char* pixels;
         int width, height;

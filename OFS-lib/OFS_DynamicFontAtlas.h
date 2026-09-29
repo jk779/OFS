@@ -15,6 +15,7 @@ struct OFS_DynFontAtlas {
 
     static ImFont* DefaultFont;
     static ImFont* DefaultFont2;
+    static ImFont* MonoFont;
 
     OFS_DynFontAtlas() noexcept;
 
