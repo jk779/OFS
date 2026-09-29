@@ -178,6 +178,8 @@ if(APPLE)
 	add_custom_target(OFS_macos_bundle_libmpv ALL
 		COMMAND ${CMAKE_COMMAND}
 			"-DOFS_APP_EXECUTABLE=$<TARGET_FILE:${PROJECT_NAME}>"
+			"-DOFS_MACOS_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+			"-DOFS_BREW_PREFIX=${OFS_BREW_PREFIX}"
 			"-DOFS_BUNDLE_ENABLED=${OFS_BUNDLE_MACOS_LIBMPV}"
 			"-DOFS_MPV_LIBRARY=${OFS_MPV_LIBRARY}"
 			"-DOFS_FFMPEG_EXECUTABLE=${OFS_FFMPEG_EXECUTABLE}"
@@ -186,6 +188,7 @@ if(APPLE)
 		DEPENDS
 			${PROJECT_NAME}
 			"${CMAKE_SOURCE_DIR}/cmake/BundleMacOSDependencies.cmake"
+			"${CMAKE_SOURCE_DIR}/cmake/MacOSDependencyGraph.cmake"
 		VERBATIM)
 	add_dependencies(OFS_macos_bundle_libmpv OFS_macos_icon_resources)
 endif()

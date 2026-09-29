@@ -15,7 +15,25 @@ Known linux dependencies to just compile are `build-essential libmpv-dev libglvn
 ### Native macOS (Apple Silicon)
 
 The native macOS build is verified for Apple Silicon (`arm64`). Intel and
-Universal builds are not currently verified.
+Universal builds are not currently verified. The configured minimum macOS
+version is 26.0. The app and every bundled Mach-O dependency must declare a
+minimum version of 26.0 or earlier. The Makefile checks the direct libmpv and
+ffmpeg providers and every reachable non-system Mach-O dependency before
+cleaning the existing local app, then checks the finished bundle before
+signing. The app has passed a smoke test in a macOS 26 virtual machine; broader
+runtime coverage has not been assessed.
+
+The build uses a pinned Homebrew bottle set: mpv 0.41.0_10, ffmpeg 9.0.2, and
+their 76-formula runtime and recommended dependency closure. The exact formula
+versions, Tahoe or architecture-independent bottle URLs, and SHA-256 values
+are in [`cmake/macos26-bottles.lock`](cmake/macos26-bottles.lock). On the
+first build, Make downloads missing bottles from the public Homebrew container
+registry, verifies them, and extracts them into the gitignored
+`.cache/macos26` project directory. Later builds reuse the verified archive
+files without network access. This process does not install Homebrew packages
+or modify `/opt/homebrew`. Keep `.cache/macos26` to retain the exact bottles
+locally if Homebrew removes them upstream. `make prepare-macos26-bottles` can
+prepare the cache separately, and normal build targets run it automatically.
 
 Required tools and libraries are:
 
@@ -25,8 +43,11 @@ Required tools and libraries are:
 - libmpv headers and the `libmpv.dylib` library
 - the `ffmpeg` CLI on the build machine
 
-The commands below use Homebrew's `mpv` package at `/opt/homebrew/opt/mpv` as
-the libmpv provider. This dependency is required only on the build machine.
+The pinned libmpv and ffmpeg providers are needed only on the build machine.
+Target Macs receive libmpv, ffmpeg, and their traversable Mach-O dylib
+dependencies inside the app bundle. The build resolves bottle load commands
+against the project-local prefix, including Homebrew's un-poured bottle
+placeholders, and fails instead of falling back to host Homebrew files.
 
 From the repository root, initialize the submodules and build the application
 with the root Makefile:
@@ -36,17 +57,19 @@ git submodule update --init --recursive
 make adhoc
 ```
 
-`make local` is an alias for `make adhoc`. The default build uses
-`MPV_ROOT=/opt/homebrew/opt/mpv`, four parallel jobs, the `Unix Makefiles`
-generator, and the compatibility options needed by the bundled dependencies.
-Override these with exported variables or command-line assignments; run
-`make help` for the complete list. `OFS_BUNDLE_MACOS_LIBMPV` copies libmpv and
-its non-system dylib dependencies into the application bundle and rewrites
-their load paths. The `ffmpeg` CLI is discovered from the build `PATH` or can
-be selected with `FFMPEG_EXECUTABLE=/path/to/ffmpeg`; it is bundled as
+`make local` is an alias for `make adhoc`. The default build uses the pinned
+providers staged in `.cache/macos26/prefix`, four parallel jobs, the `Unix
+Makefiles` generator, and the compatibility options needed by the bundled
+dependencies. Override provider paths only for a deliberately selected,
+macOS-26-compatible provider set; run `make help` for the complete list.
+`OFS_BUNDLE_MACOS_LIBMPV` copies libmpv and its non-system dylib dependencies
+into the application bundle and rewrites their load paths. The cached `ffmpeg`
+CLI can be overridden with `FFMPEG_EXECUTABLE=/path/to/ffmpeg`; it is bundled as
 `Contents/Helpers/ffmpeg`, with its non-system dylib dependencies in
 `Contents/Frameworks`. A target Mac therefore does not need Homebrew installed
 or have Homebrew on the app's `PATH`.
+The current bundler does not add script-based mpv helpers such as `yt-dlp` to
+the app; only the ffmpeg executable and reachable Mach-O dylibs are bundled.
 
 The generated application is `bin/OpenFunscripter.app`. The ad-hoc signature
 is suitable for local testing only; it is not Developer ID signing or
@@ -74,12 +97,35 @@ after an accepted submission does it staple and validate the app, require
 `release/macos-arm64/OpenFunscripter-macos-arm64-notarized.zip`. `make release`
 runs `prepare-release` and then `notarize` sequentially.
 
-The current macOS bundle uses FFmpeg 9.0.2, built with `--enable-gpl` and
-`--enable-version3` (GPL-3.0-or-later), and mpv 0.41.0. Sources: [FFmpeg 9.0.2](https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz)
-(SHA-256 `8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e`) and
-[mpv 0.41.0](https://github.com/mpv-player/mpv/releases/tag/v0.41.0). Put both
-source links and the FFmpeg checksum in the GitHub release description next
-to the app ZIP. See [FFmpeg's licensing guidance](https://ffmpeg.org/legal.html).
+The current macOS bundle contains these GPL-family components from the pinned
+Homebrew bottles: FFmpeg 9.0.2 (built with `--enable-gpl` and `--enable-version3`),
+mpv 0.41.0, x264 r3222, x265 4.3, and Rubber Band 4.0.0. Upstream source
+references:
+
+- [FFmpeg 9.0.2](https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz), SHA-256
+  `8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e`
+- [mpv 0.41.0](https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz),
+  SHA-256 `ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209`
+- [x264 r3222 at commit
+  `b35605ace3ddf7c1a5d67a2eb553f034aef41d55`](https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz)
+- [x265 4.3](https://github.com/Multicorewareinc/x265/releases/download/4.3/x265_4.3.tar.gz),
+  SHA-256 `83c53e4c8bbb8f1e33ed59e10a7d621d1d7801ca853910c3eb41f038b8ffb121`
+- [Rubber Band 4.0.0](https://breakfastquay.com/files/releases/rubberband-4.0.0.tar.bz2),
+  SHA-256 `af050313ee63bc18b35b2e064e5dce05b276aaf6d1aa2b8a82ced1fe2f8028e9`
+
+The corresponding Homebrew build recipes are pinned at
+[`homebrew-core` commit `4ee7c9a`](https://github.com/Homebrew/homebrew-core/tree/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula):
+[FFmpeg](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/f/ffmpeg.rb),
+[mpv](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/m/mpv.rb),
+[x264](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/x/x264.rb),
+[x265](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/x/x265.rb), and
+[Rubber Band](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/r/rubberband.rb).
+The mpv bottle is formula revision 10 and applies the backports listed in its
+recipe. The upstream archives do not contain these Homebrew changes; make the
+matching recipes and patches available with release source materials as
+required by the applicable licenses. This source list is not a compliance
+determination, and other bundled components may have separate notice or source
+requirements. See [FFmpeg's licensing guidance](https://ffmpeg.org/legal.html).
 
 Export the variables so Make inherits them in each step. `SIGNING_IDENTITY`
 is required by `prepare-release` and must match an installed Developer ID
@@ -87,8 +133,8 @@ Application identity. `NOTARY_PROFILE` is required by `notarize` and must name
 an existing Keychain-stored notarytool profile. `release` preflights both:
 
 ```sh
-export MPV_ROOT=/opt/homebrew/opt/mpv       # optional override
-export FFMPEG_EXECUTABLE=/path/to/ffmpeg    # optional override; defaults to PATH discovery
+export MPV_ROOT=/path/to/compatible/mpv     # optional compatible-provider override
+export FFMPEG_EXECUTABLE=/path/to/ffmpeg    # optional compatible-provider override
 export BUILD_JOBS=4                         # optional override
 export SIGNING_IDENTITY='<CERTIFICATE_SHA1>' # or full Developer ID Application name
 export NOTARY_PROFILE='<NOTARYTOOL_KEYCHAIN_PROFILE>'

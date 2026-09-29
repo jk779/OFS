@@ -7,9 +7,11 @@ SHELL := /bin/sh
 # exported environment variables; no .env file is loaded.
 CMAKE ?= cmake
 CMAKE_GENERATOR ?= Unix Makefiles
-MPV_ROOT ?= /opt/homebrew/opt/mpv
-FFMPEG_EXECUTABLE ?=
+MACOS_BOTTLE_PREFIX := $(CURDIR)/.cache/macos26/prefix
+MPV_ROOT ?= $(MACOS_BOTTLE_PREFIX)/opt/mpv
+FFMPEG_EXECUTABLE ?= $(MACOS_BOTTLE_PREFIX)/opt/ffmpeg/bin/ffmpeg
 BUILD_JOBS ?= 4
+MACOS_DEPLOYMENT_TARGET := 26.0
 
 LOCAL_BUILD_DIR := build/macos-arm64
 RELEASE_BUILD_DIR := build/macos-arm64-release
@@ -27,7 +29,7 @@ PREP_STATE := $(RELEASE_DIR)/.prepared
 SIGNING_IDENTITY ?=
 NOTARY_PROFILE ?=
 
-.PHONY: help check-platform validate-build-vars validate-signing validate-notary \
+.PHONY: help check-platform validate-build-vars prepare-macos26-bottles validate-macos-providers validate-signing validate-notary \
 	local-config adhoc local incremental clean-release \
 	release-config prepare-release notarize release check-notarization
 
@@ -41,6 +43,7 @@ help:
 		'  make notarize        Revalidate the prepared app/ZIP, submit, staple, validate, and create the final ZIP.' \
 		'  make release         Run prepare-release, then notarize, sequentially.' \
 		'  make check-notarization Extract the final ZIP if needed, then verify the release app.' \
+		'  make prepare-macos26-bottles  Download/checksum/extract the locked Homebrew bottles into ignored .cache/.' \
 		'' \
 		'Required variables by workflow:' \
 		'  prepare-release: SIGNING_IDENTITY=... (Developer ID Application identity).' \
@@ -48,11 +51,12 @@ help:
 		'  release:         both variables; they are preflighted before cleaning/building.' \
 		'' \
 		'Overrides:' \
-		'  MPV_ROOT=...           libmpv installation root (default: /opt/homebrew/opt/mpv).' \
-		'  FFMPEG_EXECUTABLE=...  ffmpeg CLI to bundle (default: discover via PATH).' \
+		'  MPV_ROOT=...           libmpv installation root (default: project-local pinned bottle cache).' \
+		'  FFMPEG_EXECUTABLE=...  ffmpeg CLI to bundle (default: project-local pinned bottle cache).' \
 		'  BUILD_JOBS=...         CMake parallel jobs (default: 4).' \
 		'  CMAKE=...              CMake executable (default: cmake).' \
 		'  CMAKE_GENERATOR=...     CMake generator (default: Unix Makefiles).' \
+		'  macOS deployment target: $(MACOS_DEPLOYMENT_TARGET) (bundled Mach-O inputs must support it).' \
 		'' \
 		'Credentials are never read from a file or stored by this Makefile.'
 
@@ -71,6 +75,18 @@ validate-build-vars: check-platform
 	@test -n "$(MPV_ROOT)" || { \
 		echo 'MPV_ROOT must name the libmpv installation root.' >&2; exit 2; \
 	}
+
+prepare-macos26-bottles: check-platform
+	./scripts/prepare-macos26-bottles.sh
+
+validate-macos-providers: validate-build-vars prepare-macos26-bottles
+	$(CMAKE) \
+		-DOFS_MACOS_DEPLOYMENT_TARGET="$(MACOS_DEPLOYMENT_TARGET)" \
+		-DOFS_MPV_ROOT="$(MPV_ROOT)" \
+		-DOFS_FFMPEG_EXECUTABLE="$(FFMPEG_EXECUTABLE)" \
+		-DOFS_BREW_PREFIX="$(MACOS_BOTTLE_PREFIX)" \
+		-DOFS_APP_EXECUTABLE="$(CURDIR)/$(APP)/Contents/MacOS/OpenFunscripter" \
+		-P cmake/PreflightMacOSDeploymentTarget.cmake
 
 validate-signing: validate-build-vars
 	@test -n "$(SIGNING_IDENTITY)" || { \
@@ -101,15 +117,18 @@ validate-notary: check-platform
 		exit 2; \
 	}
 
-local-config: validate-build-vars
+local-config: validate-macos-providers
 	@printf '%s\n' 'Configuring local Release arm64 build...'
 	$(CMAKE) -S . -B "$(LOCAL_BUILD_DIR)" -G "$(CMAKE_GENERATOR)" \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_OSX_ARCHITECTURES=arm64 \
+		-DCMAKE_OSX_DEPLOYMENT_TARGET:STRING=$(MACOS_DEPLOYMENT_TARGET) \
 		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 		-DHAVE_GCC_WERROR_DECLARATION_AFTER_STATEMENT=OFF \
+		-U MPV_INCLUDE_DIR -U MPV_LIBRARY -U OFS_MPV_LIBRARY \
 		-DOFS_MPV_ROOT="$(MPV_ROOT)" \
 		-DOFS_FFMPEG_EXECUTABLE="$(FFMPEG_EXECUTABLE)" \
+		-DOFS_BREW_PREFIX="$(MACOS_BOTTLE_PREFIX)" \
 		-DOFS_BUNDLE_MACOS_LIBMPV=ON \
 		-DOFS_MACOS_ADHOC_SIGN=ON
 
@@ -124,7 +143,7 @@ adhoc: local-config
 
 local: adhoc
 
-incremental:
+incremental: validate-macos-providers
 	$(CMAKE) --build "$(LOCAL_BUILD_DIR)" --config Release --parallel "$(BUILD_JOBS)"
 
 clean-release: check-platform
@@ -134,15 +153,18 @@ clean-release: check-platform
 	@test "$(APP)" = 'bin/OpenFunscripter.app' || { echo 'Refusing to clean an unexpected app path.' >&2; exit 2; }
 	rm -rf "$(RELEASE_BUILD_DIR)" "$(RELEASE_DIR)" "$(APP)"
 
-release-config: clean-release validate-build-vars
+release-config: validate-macos-providers clean-release
 	@printf '%s\n' 'Configuring clean Developer ID Release arm64 build...'
 	$(CMAKE) -S . -B "$(RELEASE_BUILD_DIR)" -G "$(CMAKE_GENERATOR)" \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_OSX_ARCHITECTURES=arm64 \
+		-DCMAKE_OSX_DEPLOYMENT_TARGET:STRING=$(MACOS_DEPLOYMENT_TARGET) \
 		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 		-DHAVE_GCC_WERROR_DECLARATION_AFTER_STATEMENT=OFF \
+		-U MPV_INCLUDE_DIR -U MPV_LIBRARY -U OFS_MPV_LIBRARY \
 		-DOFS_MPV_ROOT="$(MPV_ROOT)" \
 		-DOFS_FFMPEG_EXECUTABLE="$(FFMPEG_EXECUTABLE)" \
+		-DOFS_BREW_PREFIX="$(MACOS_BOTTLE_PREFIX)" \
 		-DOFS_BUNDLE_MACOS_LIBMPV=ON \
 		-DOFS_MACOS_ADHOC_SIGN=OFF
 

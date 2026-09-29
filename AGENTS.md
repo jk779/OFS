@@ -2,13 +2,25 @@
 
 ## Supported build
 
-The verified native target is Apple Silicon (`arm64`). Intel and Universal
-builds are not currently verified. Building requires Git, recursively
+The verified native build is Apple Silicon (`arm64`), configured for a
+macOS 26.0 deployment target. The app has passed a smoke test in a macOS 26
+virtual machine; broader runtime coverage has not been assessed. Intel and
+Universal builds are not currently verified.
+Building requires Git, recursively
 initialized submodules, Xcode Command Line Tools/AppleClang, CMake 3.16 or
-newer, libmpv headers plus `libmpv.dylib`, and the `ffmpeg` CLI on the build
-machine. The verified libmpv provider is Homebrew `mpv` at
-`/opt/homebrew/opt/mpv`; it is needed on the build machine, not on target Macs
-when bundling is enabled.
+newer, and network access the first time each locked bottle is needed. The
+default providers are Homebrew `mpv` 0.41.0_10 and `ffmpeg` 9.0.2, plus their
+76-formula runtime and recommended dependency closure. Exact Tahoe or
+architecture-independent bottles, URLs, versions, and SHA-256 values are
+recorded in `cmake/macos26-bottles.lock`.
+
+The normal `make adhoc` and `make prepare-release` workflows automatically
+download missing bottles, verify their checksums, and stage them under the
+gitignored `.cache/macos26`. They reuse valid cached archives without network
+access and do not install or change anything under `/opt/homebrew`. Keep
+`.cache/macos26` if the bottle files should remain available offline after
+Homebrew removes them upstream. `make prepare-macos26-bottles` can prepare the
+cache separately; the build targets call it automatically.
 
 Initialize submodules and run the canonical local macOS build from the
 repository root:
@@ -19,11 +31,11 @@ make adhoc
 ```
 
 Use `make adhoc` (or its `make local` alias) for a full local macOS app build.
-It configures the build, removes the existing app bundle, rebuilds, ad-hoc
-signs, and verifies it. For incremental rebuilds after source edits, use
-`make incremental` after a successful `make adhoc`. It is a direct wrapper for
-the incremental `cmake --build` command, without extra configuration, cleanup,
-or verification. Use the Makefile target so the local workflow is explicit.
+It prepares and preflights the pinned providers before removing the existing
+app bundle, then builds, ad-hoc signs, and verifies it. For incremental
+rebuilds after source edits, use `make incremental` after a successful
+`make adhoc`; it rechecks the provider cache and deployment targets before
+running the incremental CMake build.
 
 The `make adhoc` target configures and builds a Release arm64 app with bundled
 libmpv, ad-hoc signs it for local testing, and verifies the bundle with strict
@@ -31,9 +43,21 @@ deep `codesign` checks. The output is `bin/OpenFunscripter.app`. Bundling copies
 libmpv and the `ffmpeg` CLI into `Contents/Frameworks` and
 `Contents/Helpers/ffmpeg`, respectively. Their non-system dylib dependencies
 are copied into `Contents/Frameworks` and their load paths are rewritten to
-use `@rpath`. CMake discovers `ffmpeg` through the build `PATH`; override it
-with `OFS_FFMPEG_EXECUTABLE`. Ad-hoc signing is not Developer ID signing or
+use `@rpath`. Provider resolution maps Homebrew's normal install paths and
+un-poured bottle placeholders to the staged project prefix; it never falls
+back to host Homebrew dylibs. Ad-hoc signing is not Developer ID signing or
 notarization.
+
+Both canonical Makefile configurations set `CMAKE_OSX_DEPLOYMENT_TARGET=26.0`,
+which also supplies the Icon Composer compiler's minimum deployment target.
+Both direct providers and every non-system Mach-O dependency reachable from
+their load commands are checked before local or release cleanup. The app,
+bundled `ffmpeg`, and every copied dylib are checked again before signing, and
+the final bundle is rejected if its load commands still reference an external
+Homebrew installation. The bottle cache stages script-based helpers such as
+`yt-dlp` for offline builds, but the current app bundler copies only libmpv,
+ffmpeg, and their Mach-O dylib graph; those helper programs are not added to
+the app bundle by this workflow.
 
 The `make incremental` target reuses the existing configuration in
 `build/macos-arm64`. The CMake build still runs its bundle and ad-hoc signing
