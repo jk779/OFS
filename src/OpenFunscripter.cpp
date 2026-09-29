@@ -2805,11 +2805,6 @@ void OpenFunscripter::UpdateMacOSMenu() noexcept
     recentItems.push_back(NativeAction(TR(CLEAR_RECENT_FILES), NativeCommand::ClearRecent,
         !ofsState.recentFiles.empty()));
 
-    const auto secondsSinceBackup = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::steady_clock::now() - lastBackup).count();
-    const char* autoBackupTitle = autoBackup && projectValid
-        ? FMT(TR(AUTO_BACKUP_TIMER_FMT), static_cast<int>(AutoBackupIntervalSeconds - secondsSinceBackup))
-        : TR(AUTO_BACKUP);
     addMenu(TR(FILE), {
         NativeAction(TR(GENERIC_OPEN), NativeCommand::Open),
         NativeAction(TR(CLOSE_PROJECT), NativeCommand::CloseProject, projectValid),
@@ -2823,7 +2818,7 @@ void OpenFunscripter::UpdateMacOSMenu() noexcept
             NativeAction(TR(EXPORT_ALL), NativeCommand::ExportAll),
         }, projectValid),
         NativeSeparator(),
-        NativeAction(autoBackupTitle, NativeCommand::ToggleAutoBackup, true, autoBackup),
+        NativeAction(TR(AUTO_BACKUP), NativeCommand::ToggleAutoBackup, true, autoBackup),
         NativeAction(TR(OPEN_BACKUP_DIR), NativeCommand::OpenBackupDirectory),
     });
 
