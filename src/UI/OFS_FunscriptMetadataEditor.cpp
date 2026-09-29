@@ -8,6 +8,8 @@
 
 #include "state/MetadataEditorState.h"
 
+#include <cfloat>
+
 OFS_FunscriptMetadataEditor::OFS_FunscriptMetadataEditor() noexcept
 {
     stateHandle = OFS_AppState<FunscriptMetadataState>::Register(FunscriptMetadataState::StateName);
@@ -15,11 +17,12 @@ OFS_FunscriptMetadataEditor::OFS_FunscriptMetadataEditor() noexcept
 
 bool OFS_FunscriptMetadataEditor::ShowMetadataEditor(bool* open, Funscript::Metadata& metadata) noexcept
 {
-    if(*open) ImGui::OpenPopup(TR_ID("METADATA_EDITOR", Tr::METADATA_EDITOR));
     OFS_PROFILE(__FUNCTION__);
     bool metaDataChanged = false;
 
-    if (ImGui::BeginPopupModal(TR_ID("METADATA_EDITOR", Tr::METADATA_EDITOR), open, ImGuiWindowFlags_NoDocking)) {
+    ImGui::SetNextWindowSize(ImVec2(480.f, 620.f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(420.f, 500.f), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin(TR_ID("METADATA_EDITOR", Tr::METADATA_EDITOR), open, ImGuiWindowFlags_NoDocking)) {
         metaDataChanged |= ImGui::InputText(TR(TITLE), &metadata.title);
         Util::FormatTime(Util::FormatBuffer, sizeof(Util::FormatBuffer), (float)metadata.duration, false);
         ImGui::LabelText(TR(DURATION), "%s", Util::FormatBuffer);
@@ -155,7 +158,7 @@ bool OFS_FunscriptMetadataEditor::ShowMetadataEditor(bool* open, Funscript::Meta
             state.defaultMetadata = metadata;
         }
         OFS::Tooltip(TR(SAVE_TEMPLATE_TOOLTIP));
-        ImGui::EndPopup();
     }
+    ImGui::End();
     return metaDataChanged;   
 }
