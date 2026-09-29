@@ -39,6 +39,17 @@ The `make incremental` target reuses the existing configuration in
 `build/macos-arm64`. The CMake build still runs its bundle and ad-hoc signing
 target. Run `make adhoc` first to create the local configuration.
 
+When compiling the Icon Composer `.icon` source with `actool` from Codex on
+macOS, the normal command sandbox can cause a misleading `The file
+“OpenFunScripter.icon” couldn’t be opened` / `Icon export exited with status
+255` error. In this environment, `ibtoold` also reports a denied
+CoreSimulator log or service connection. The same source and `actool` command
+were verified to succeed when the command ran outside the sandbox. If this
+occurs during an authorized build, rerun the affected `actool` or CMake build
+command with a targeted sandbox escalation; do not change the `.icon` source
+or its compiler options based on that error alone. Do not grant broad,
+persistent full access for this workaround.
+
 ## Developer ID release invariants
 
 - Use a clean Release build with `OFS_BUNDLE_MACOS_LIBMPV=ON` and
@@ -64,8 +75,10 @@ target. Run `make adhoc` first to create the local configuration.
 
 ## Maintenance invariants
 
-- The checked-in `OpenFunscripter.icns` is the application icon; the build does
-  not generate it.
+- The root `OpenFunScripter.icon` Icon Composer package is the canonical macOS
+  application icon source. The macOS build compiles it with `actool` and puts
+  `Assets.car` plus the generated `OpenFunScripter.icns` fallback in the app's
+  `Contents/Resources` before signing. There is no checked-in `.icns` source.
 - Project resources belong in `Contents/Resources/data`. Normalize the value
   returned by `SDL_GetBasePath()` before appending `data` so both bundle and
   non-bundle layouts resolve correctly.

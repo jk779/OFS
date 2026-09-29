@@ -48,11 +48,90 @@ else()
 endif()
 
 if(APPLE)
-	set(OFS_MACOS_ICON "${CMAKE_SOURCE_DIR}/OpenFunscripter.icns")
-	set_source_files_properties("${OFS_MACOS_ICON}"
-		PROPERTIES
-			MACOSX_PACKAGE_LOCATION Resources)
-	target_sources(${PROJECT_NAME} PRIVATE "${OFS_MACOS_ICON}")
+	set(OFS_MACOS_ICON_SOURCE "${CMAKE_SOURCE_DIR}/OpenFunScripter.icon")
+	set(OFS_MACOS_ICON_NAME "OpenFunScripter")
+	set(OFS_MACOS_ICON_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/macos-icon-assets")
+	set(OFS_MACOS_ICON_ASSETS_CAR "${OFS_MACOS_ICON_OUTPUT_DIR}/Assets.car")
+	set(OFS_MACOS_ICON_FALLBACK "${OFS_MACOS_ICON_OUTPUT_DIR}/${OFS_MACOS_ICON_NAME}.icns")
+	set(OFS_MACOS_ICON_PARTIAL_PLIST "${OFS_MACOS_ICON_OUTPUT_DIR}/icon-info.plist")
+	set(OFS_MACOS_ICON_BUNDLE_RESOURCES "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources")
+	set(OFS_MACOS_ICON_BUNDLE_INFO_PLIST "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Info.plist")
+
+	if(NOT EXISTS "${OFS_MACOS_ICON_SOURCE}/icon.json")
+		message(FATAL_ERROR "Icon Composer source is missing: ${OFS_MACOS_ICON_SOURCE}/icon.json")
+	endif()
+
+	# Watch the whole Icon Composer package so edits and newly added assets
+	# trigger CMake regeneration and then rerun actool.
+	file(GLOB_RECURSE OFS_MACOS_ICON_INPUTS CONFIGURE_DEPENDS
+		LIST_DIRECTORIES FALSE
+		"${OFS_MACOS_ICON_SOURCE}/*")
+
+	find_program(OFS_XCRUN_EXECUTABLE xcrun)
+	if(NOT OFS_XCRUN_EXECUTABLE)
+		message(FATAL_ERROR "xcrun is required to compile the macOS Icon Composer source")
+	endif()
+	find_program(OFS_PLISTBUDDY_EXECUTABLE PlistBuddy
+		PATHS /usr/libexec NO_DEFAULT_PATH)
+	if(NOT OFS_PLISTBUDDY_EXECUTABLE)
+		message(FATAL_ERROR "macOS PlistBuddy is required to merge actool icon metadata")
+	endif()
+
+	if(CMAKE_OSX_DEPLOYMENT_TARGET)
+		set(OFS_MACOS_ICON_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+	else()
+		# Clang defaults the deployment target to the selected macOS SDK when no
+		# explicit target is configured. Match that existing build behavior.
+		execute_process(
+			COMMAND "${OFS_XCRUN_EXECUTABLE}" --sdk macosx --show-sdk-version
+			OUTPUT_VARIABLE OFS_MACOS_ICON_DEPLOYMENT_TARGET
+			RESULT_VARIABLE OFS_MACOS_SDK_VERSION_RESULT
+			OUTPUT_STRIP_TRAILING_WHITESPACE)
+		if(NOT OFS_MACOS_SDK_VERSION_RESULT EQUAL 0 OR
+			NOT OFS_MACOS_ICON_DEPLOYMENT_TARGET MATCHES "^[0-9]+(\\.[0-9]+)*$")
+			message(FATAL_ERROR
+				"Could not determine the selected macOS SDK version for actool deployment target")
+		endif()
+	endif()
+
+	add_custom_command(
+		OUTPUT
+			"${OFS_MACOS_ICON_ASSETS_CAR}"
+			"${OFS_MACOS_ICON_FALLBACK}"
+			"${OFS_MACOS_ICON_PARTIAL_PLIST}"
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${OFS_MACOS_ICON_OUTPUT_DIR}"
+		COMMAND "${OFS_XCRUN_EXECUTABLE}" actool "${OFS_MACOS_ICON_SOURCE}"
+			--compile "${OFS_MACOS_ICON_OUTPUT_DIR}"
+			--app-icon "${OFS_MACOS_ICON_NAME}"
+			--include-all-app-icons
+			--target-device mac
+			--platform macosx
+			--minimum-deployment-target "${OFS_MACOS_ICON_DEPLOYMENT_TARGET}"
+			--standalone-icon-behavior all
+			--output-partial-info-plist "${OFS_MACOS_ICON_PARTIAL_PLIST}"
+		DEPENDS ${OFS_MACOS_ICON_INPUTS}
+		COMMENT "Compiling the OpenFunscripter Icon Composer source"
+		VERBATIM)
+
+	# Install the generated catalog and fallback after the app bundle exists,
+	# then merge actool's plist additions without replacing CMake's other keys.
+	add_custom_target(OFS_macos_icon_resources ALL
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${OFS_MACOS_ICON_BUNDLE_RESOURCES}"
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+			"${OFS_MACOS_ICON_ASSETS_CAR}" "${OFS_MACOS_ICON_BUNDLE_RESOURCES}/Assets.car"
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+			"${OFS_MACOS_ICON_FALLBACK}"
+			"${OFS_MACOS_ICON_BUNDLE_RESOURCES}/${OFS_MACOS_ICON_NAME}.icns"
+		COMMAND "${OFS_PLISTBUDDY_EXECUTABLE}"
+			-c "Merge \"${OFS_MACOS_ICON_PARTIAL_PLIST}\""
+			"${OFS_MACOS_ICON_BUNDLE_INFO_PLIST}"
+		DEPENDS
+			"${OFS_MACOS_ICON_ASSETS_CAR}"
+			"${OFS_MACOS_ICON_FALLBACK}"
+			"${OFS_MACOS_ICON_PARTIAL_PLIST}"
+		VERBATIM)
+	add_dependencies(OFS_macos_icon_resources ${PROJECT_NAME})
+
 	target_compile_definitions(${PROJECT_NAME} PRIVATE
 		"OFS_MACOS_DISPLAY_TITLE=\"OpenFunscripter v3.2.0 — macOS build v1.0.0\"")
 
@@ -62,7 +141,7 @@ if(APPLE)
 		MACOSX_BUNDLE_BUNDLE_VERSION "320.1"
 		MACOSX_BUNDLE_SHORT_VERSION_STRING "3.2.0"
 		MACOSX_BUNDLE_INFO_STRING "OpenFunscripter v3.2.0 — macOS build v1.0.0"
-		MACOSX_BUNDLE_ICON_FILE "OpenFunscripter.icns"
+		MACOSX_BUNDLE_ICON_FILE "${OFS_MACOS_ICON_NAME}.icns"
 	)
 endif()
 
@@ -108,7 +187,7 @@ if(APPLE)
 			${PROJECT_NAME}
 			"${CMAKE_SOURCE_DIR}/cmake/BundleMacOSDependencies.cmake"
 		VERBATIM)
-	add_dependencies(OFS_macos_bundle_libmpv ${PROJECT_NAME})
+	add_dependencies(OFS_macos_bundle_libmpv OFS_macos_icon_resources)
 endif()
 
 
