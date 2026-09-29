@@ -148,7 +148,9 @@ OFS_KeybindingSystem::~OFS_KeybindingSystem() noexcept
 void OFS_KeybindingSystem::ProcessKeybindings() noexcept
 {
     auto& io = ImGui::GetIO();
-    if (io.WantCaptureKeyboard) return;
+    // Do not let application shortcuts interfere with shortcut reassignment.
+    if (ImGui::IsPopupOpen(TR_ID("ADD_EDIT_TRIGGER", Tr::ADD_EDIT_TRIGGER))) return;
+    const bool keyboardCaptured = io.WantCaptureKeyboard;
 
     auto& state = OFS_KeybindingState::State(stateHandle);
 
@@ -185,6 +187,9 @@ void OFS_KeybindingSystem::ProcessKeybindings() noexcept
         auto actionIt = actions.find(trigger.MappedActionId);
         if(actionIt != actions.end())
         {
+            if (keyboardCaptured && !actionIt->second.AllowWhenKeyboardCaptured)
+                continue;
+
             // Fire action
             actionIt->second.Action();
         }

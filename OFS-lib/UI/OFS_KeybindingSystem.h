@@ -9,9 +9,12 @@ struct OFS_Action
     std::string Id;
     ActionFireFn Action = []() { FUN_ASSERT(false, "Action not set.") };
     bool Dynamic = false;
+    bool AllowWhenKeyboardCaptured = false;
 
-    OFS_Action(const char* strId, ActionFireFn&& actionFn, bool isDynamic = false) noexcept
-        : Id(strId), Action(std::move(actionFn)), Dynamic(isDynamic)
+    OFS_Action(const char* strId, ActionFireFn&& actionFn, bool isDynamic = false,
+               bool allowWhenKeyboardCaptured = false) noexcept
+        : Id(strId), Action(std::move(actionFn)), Dynamic(isDynamic),
+          AllowWhenKeyboardCaptured(allowWhenKeyboardCaptured)
     {
     }
 

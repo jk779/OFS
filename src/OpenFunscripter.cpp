@@ -518,6 +518,20 @@ void OpenFunscripter::registerBindings()
                     }
                 } },
             Tr::ACTION_RELOAD_TRANSLATION, "Core");
+
+#if defined(__APPLE__)
+        keys->RegisterAction(
+            { "quit_application",
+                [this]() { exitApp(); }, false, true },
+            "Quit OpenFunscripter", "Core",
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_Q } });
+
+        keys->RegisterAction(
+            { "open_preferences",
+                [this]() { preferences->ShowWindow = true; }, false, true },
+            Tr::PREFERENCES, "Core",
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_Comma } });
+#endif
     }
 
     keys->RegisterGroup("Navigation", Tr::NAVIGATION_BINDING_GROUP);
