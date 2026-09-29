@@ -97,12 +97,35 @@ after an accepted submission does it staple and validate the app, require
 `release/macos-arm64/OpenFunscripter-macos-arm64-notarized.zip`. `make release`
 runs `prepare-release` and then `notarize` sequentially.
 
-The current macOS bundle uses FFmpeg 9.0.2, built with `--enable-gpl` and
-`--enable-version3` (GPL-3.0-or-later), and mpv 0.41.0. Sources: [FFmpeg 9.0.2](https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz)
-(SHA-256 `8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e`) and
-[mpv 0.41.0](https://github.com/mpv-player/mpv/releases/tag/v0.41.0). Put both
-source links and the FFmpeg checksum in the GitHub release description next
-to the app ZIP. See [FFmpeg's licensing guidance](https://ffmpeg.org/legal.html).
+The current macOS bundle contains these GPL-family components from the pinned
+Homebrew bottles: FFmpeg 9.0.2 (built with `--enable-gpl` and `--enable-version3`),
+mpv 0.41.0, x264 r3222, x265 4.3, and Rubber Band 4.0.0. Upstream source
+references:
+
+- [FFmpeg 9.0.2](https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz), SHA-256
+  `8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e`
+- [mpv 0.41.0](https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz),
+  SHA-256 `ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209`
+- [x264 r3222 at commit
+  `b35605ace3ddf7c1a5d67a2eb553f034aef41d55`](https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz)
+- [x265 4.3](https://github.com/Multicorewareinc/x265/releases/download/4.3/x265_4.3.tar.gz),
+  SHA-256 `83c53e4c8bbb8f1e33ed59e10a7d621d1d7801ca853910c3eb41f038b8ffb121`
+- [Rubber Band 4.0.0](https://breakfastquay.com/files/releases/rubberband-4.0.0.tar.bz2),
+  SHA-256 `af050313ee63bc18b35b2e064e5dce05b276aaf6d1aa2b8a82ced1fe2f8028e9`
+
+The corresponding Homebrew build recipes are pinned at
+[`homebrew-core` commit `4ee7c9a`](https://github.com/Homebrew/homebrew-core/tree/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula):
+[FFmpeg](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/f/ffmpeg.rb),
+[mpv](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/m/mpv.rb),
+[x264](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/x/x264.rb),
+[x265](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/x/x265.rb), and
+[Rubber Band](https://github.com/Homebrew/homebrew-core/blob/4ee7c9a6522a27dde108e07db9cacb2ba9a0f0ec/Formula/r/rubberband.rb).
+The mpv bottle is formula revision 10 and applies the backports listed in its
+recipe. The upstream archives do not contain these Homebrew changes; make the
+matching recipes and patches available with release source materials as
+required by the applicable licenses. This source list is not a compliance
+determination, and other bundled components may have separate notice or source
+requirements. See [FFmpeg's licensing guidance](https://ffmpeg.org/legal.html).
 
 Export the variables so Make inherits them in each step. `SIGNING_IDENTITY`
 is required by `prepare-release` and must match an installed Developer ID
