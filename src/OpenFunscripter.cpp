@@ -532,6 +532,22 @@ void OpenFunscripter::registerBindings()
 
 #if defined(__APPLE__)
         keys->RegisterAction(
+            { "open_project",
+                [this]() { HandleMacOSMenuAction(static_cast<int>(MacMenuCommand::Open), 0); }, false, true },
+            Tr::GENERIC_OPEN, "Core",
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_O } });
+
+        keys->RegisterAction(
+            { "close_project",
+                [this]() {
+                    if (LoadedProject->IsValid()) {
+                        HandleMacOSMenuAction(static_cast<int>(MacMenuCommand::CloseProject), 0);
+                    }
+                }, false, true },
+            Tr::CLOSE_PROJECT, "Core",
+            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_W } });
+
+        keys->RegisterAction(
             { "quit_application",
                 [this]() { exitApp(); }, false, true },
             "Quit OpenFunscripter", "Core",
@@ -692,7 +708,12 @@ void OpenFunscripter::registerBindings()
                 },
                 false },
             Tr::ACTION_REDO, "Utility",
-            { { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_Y, true } });
+            {
+                { OFS_Platform::PrimaryImGuiModifier, ImGuiKey_Y, true },
+#if defined(__APPLE__)
+                { OFS_Platform::PrimaryImGuiModifier | ImGuiMod_Shift, ImGuiKey_Z, true },
+#endif
+            });
 
         // COPY / PASTE
         keys->RegisterAction(
