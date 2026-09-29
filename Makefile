@@ -14,6 +14,7 @@ LOCAL_BUILD_DIR := build/macos-arm64
 RELEASE_BUILD_DIR := build/macos-arm64-release
 RELEASE_DIR := release/macos-arm64
 APP := bin/OpenFunscripter.app
+RELEASE_APP := $(RELEASE_DIR)/OpenFunscripter.app
 ENTITLEMENTS := cmake/OpenFunscripter.entitlements.plist
 PRE_NOTARY_ZIP := $(RELEASE_DIR)/OpenFunscripter-macos-arm64-pre-notarization.zip
 FINAL_ZIP := $(RELEASE_DIR)/OpenFunscripter-macos-arm64-notarized.zip
@@ -26,7 +27,7 @@ SIGNING_IDENTITY ?=
 NOTARY_PROFILE ?=
 
 .PHONY: help check-platform validate-build-vars validate-signing validate-notary \
-	local-config adhoc local clean-release release-config prepare-release notarize release
+	local-config adhoc local clean-release release-config prepare-release notarize release check-notarization
 
 help:
 	@printf '%s\n' \
@@ -36,6 +37,7 @@ help:
 		'  make prepare-release Clean/rebuild Release arm64, Developer ID sign, verify, and create the pre-notary ZIP.' \
 		'  make notarize        Revalidate the prepared app/ZIP, submit, staple, validate, and create the final ZIP.' \
 		'  make release         Run prepare-release, then notarize, sequentially.' \
+		'  make check-notarization Extract the final ZIP if needed, then verify the release app.' \
 		'' \
 		'Required variables by workflow:' \
 		'  prepare-release: SIGNING_IDENTITY=... (Developer ID Application identity).' \
@@ -218,3 +220,47 @@ release: check-platform
 	@$(MAKE) validate-notary
 	@$(MAKE) prepare-release
 	@$(MAKE) notarize
+
+check-notarization:
+	@if [ ! -d "$(RELEASE_APP)" ]; then \
+		test ! -e "$(RELEASE_APP)" || { echo 'Release app path exists but is not a directory: $(RELEASE_APP)' >&2; exit 2; }; \
+		test -f "$(FINAL_ZIP)" || { echo 'Release app and notarized ZIP are missing.' >&2; exit 2; }; \
+		printf '%s\n' 'Extracting the notarized app from $(FINAL_ZIP)...'; \
+		ditto -x -k "$(FINAL_ZIP)" "$(RELEASE_DIR)" || exit; \
+	fi; \
+	test -d "$(RELEASE_APP)" || { echo 'Notarized ZIP does not contain $(RELEASE_APP).' >&2; exit 2; }
+	@set -eu; \
+		app="$(RELEASE_APP)"; \
+		printf 'App: %s\n' "$$app"; \
+		stapler_output="$$(xcrun stapler validate "$$app" 2>&1)" || { \
+			printf '%s\n' "$$stapler_output" >&2; exit 1; \
+		}; \
+		printf '%s\n' 'Notarization ticket: valid'; \
+		spctl_output="$$(spctl --assess --type execute --verbose=4 "$$app" 2>&1)" || { \
+			printf '%s\n' "$$spctl_output" >&2; exit 1; \
+		}; \
+		printf '%s\n' "$$spctl_output" | grep -F 'source=Notarized Developer ID' >/dev/null || { \
+			printf '%s\n' "$$spctl_output" >&2; \
+			echo 'spctl did not report source=Notarized Developer ID.' >&2; exit 1; \
+		}; \
+		printf '%s\n' 'Gatekeeper: accepted (Notarized Developer ID)'; \
+		verify_output="$$(codesign --verify --deep --strict "$$app" 2>&1)" || { \
+			printf '%s\n' "$$verify_output" >&2; exit 1; \
+		}; \
+		printf '%s\n' 'Code signature: valid (deep, strict)'; \
+		signature_info="$$(codesign -dv --verbose=4 "$$app" 2>&1)" || { \
+			printf '%s\n' "$$signature_info" >&2; exit 1; \
+		}; \
+		printf '%s\n' "$$signature_info" | awk -F= ' \
+			/^Identifier=/ { identifier = $$2 } \
+			/^Authority=/ && !authority { authority = $$2 } \
+			/^TeamIdentifier=/ { team = $$2 } \
+			/^CDHash=/ { cdhash = $$2 } \
+			/^Timestamp=/ { timestamp = $$2 } \
+			END { \
+				if (!identifier || !authority || !team || !cdhash) { \
+					print "Could not read complete signing identity from the app." > "/dev/stderr"; exit 1 \
+				} \
+				printf "Bundle ID: %s\nSigning identity: %s\nTeam ID: %s\nCDHash: %s\n", identifier, authority, team, cdhash; \
+				if (timestamp) printf "Signed: %s\n", timestamp \
+			}'
