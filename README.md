@@ -15,7 +15,25 @@ Known linux dependencies to just compile are `build-essential libmpv-dev libglvn
 ### Native macOS (Apple Silicon)
 
 The native macOS build is verified for Apple Silicon (`arm64`). Intel and
-Universal builds are not currently verified.
+Universal builds are not currently verified. The configured minimum macOS
+version is 26.0. The app and every bundled Mach-O dependency must declare a
+minimum version of 26.0 or earlier. The Makefile checks the direct libmpv and
+ffmpeg providers and every reachable non-system Mach-O dependency before
+cleaning the existing local app, then checks the finished bundle before
+signing. The app has passed a smoke test in a macOS 26 virtual machine; broader
+runtime coverage has not been assessed.
+
+The build uses a pinned Homebrew bottle set: mpv 0.41.0_10, ffmpeg 9.0.2, and
+their 76-formula runtime and recommended dependency closure. The exact formula
+versions, Tahoe or architecture-independent bottle URLs, and SHA-256 values
+are in [`cmake/macos26-bottles.lock`](cmake/macos26-bottles.lock). On the
+first build, Make downloads missing bottles from the public Homebrew container
+registry, verifies them, and extracts them into the gitignored
+`.cache/macos26` project directory. Later builds reuse the verified archive
+files without network access. This process does not install Homebrew packages
+or modify `/opt/homebrew`. Keep `.cache/macos26` to retain the exact bottles
+locally if Homebrew removes them upstream. `make prepare-macos26-bottles` can
+prepare the cache separately, and normal build targets run it automatically.
 
 Required tools and libraries are:
 
@@ -25,8 +43,11 @@ Required tools and libraries are:
 - libmpv headers and the `libmpv.dylib` library
 - the `ffmpeg` CLI on the build machine
 
-The commands below use Homebrew's `mpv` package at `/opt/homebrew/opt/mpv` as
-the libmpv provider. This dependency is required only on the build machine.
+The pinned libmpv and ffmpeg providers are needed only on the build machine.
+Target Macs receive libmpv, ffmpeg, and their traversable Mach-O dylib
+dependencies inside the app bundle. The build resolves bottle load commands
+against the project-local prefix, including Homebrew's un-poured bottle
+placeholders, and fails instead of falling back to host Homebrew files.
 
 From the repository root, initialize the submodules and build the application
 with the root Makefile:
@@ -36,17 +57,19 @@ git submodule update --init --recursive
 make adhoc
 ```
 
-`make local` is an alias for `make adhoc`. The default build uses
-`MPV_ROOT=/opt/homebrew/opt/mpv`, four parallel jobs, the `Unix Makefiles`
-generator, and the compatibility options needed by the bundled dependencies.
-Override these with exported variables or command-line assignments; run
-`make help` for the complete list. `OFS_BUNDLE_MACOS_LIBMPV` copies libmpv and
-its non-system dylib dependencies into the application bundle and rewrites
-their load paths. The `ffmpeg` CLI is discovered from the build `PATH` or can
-be selected with `FFMPEG_EXECUTABLE=/path/to/ffmpeg`; it is bundled as
+`make local` is an alias for `make adhoc`. The default build uses the pinned
+providers staged in `.cache/macos26/prefix`, four parallel jobs, the `Unix
+Makefiles` generator, and the compatibility options needed by the bundled
+dependencies. Override provider paths only for a deliberately selected,
+macOS-26-compatible provider set; run `make help` for the complete list.
+`OFS_BUNDLE_MACOS_LIBMPV` copies libmpv and its non-system dylib dependencies
+into the application bundle and rewrites their load paths. The cached `ffmpeg`
+CLI can be overridden with `FFMPEG_EXECUTABLE=/path/to/ffmpeg`; it is bundled as
 `Contents/Helpers/ffmpeg`, with its non-system dylib dependencies in
 `Contents/Frameworks`. A target Mac therefore does not need Homebrew installed
 or have Homebrew on the app's `PATH`.
+The current bundler does not add script-based mpv helpers such as `yt-dlp` to
+the app; only the ffmpeg executable and reachable Mach-O dylibs are bundled.
 
 The generated application is `bin/OpenFunscripter.app`. The ad-hoc signature
 is suitable for local testing only; it is not Developer ID signing or
@@ -87,8 +110,8 @@ Application identity. `NOTARY_PROFILE` is required by `notarize` and must name
 an existing Keychain-stored notarytool profile. `release` preflights both:
 
 ```sh
-export MPV_ROOT=/opt/homebrew/opt/mpv       # optional override
-export FFMPEG_EXECUTABLE=/path/to/ffmpeg    # optional override; defaults to PATH discovery
+export MPV_ROOT=/path/to/compatible/mpv     # optional compatible-provider override
+export FFMPEG_EXECUTABLE=/path/to/ffmpeg    # optional compatible-provider override
 export BUILD_JOBS=4                         # optional override
 export SIGNING_IDENTITY='<CERTIFICATE_SHA1>' # or full Developer ID Application name
 export NOTARY_PROFILE='<NOTARYTOOL_KEYCHAIN_PROFILE>'
