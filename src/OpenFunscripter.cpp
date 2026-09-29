@@ -1835,6 +1835,7 @@ void OpenFunscripter::Shutdown() noexcept
     OFS_MacOS::ClearMainMenuHandler();
 #endif
 
+    FunscriptHeatmap::Shutdown();
     OFS_DynFontAtlas::Shutdown();
     OFS_Translator::Shutdown();
 

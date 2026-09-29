@@ -12,6 +12,7 @@ public:
 	static ImGradient Colors;
 
 	static void Init() noexcept;
+	static void Shutdown() noexcept;
 
 	uint32_t speedTexture = 0;
 

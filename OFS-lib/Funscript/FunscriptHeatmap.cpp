@@ -137,6 +137,11 @@ void FunscriptHeatmap::Init() noexcept
     Shader = std::make_unique<HeatmapShader>();
 }
 
+void FunscriptHeatmap::Shutdown() noexcept
+{
+    Shader.reset();
+}
+
 FunscriptHeatmap::FunscriptHeatmap() noexcept
 {
     glGenTextures(1, &speedTexture);
