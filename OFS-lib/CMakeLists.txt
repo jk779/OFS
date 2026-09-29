@@ -235,10 +235,9 @@ elseif(APPLE)
 		DOC "Directory containing mpv/client.h"
 		HINTS
 			"${OFS_MPV_ROOT}/include"
-			"/opt/homebrew/include"
-			"/usr/local/include"
 			"${CMAKE_SOURCE_DIR}/lib/libmpv/include"
 		PATH_SUFFIXES include
+		NO_DEFAULT_PATH
 	)
 	if (NOT MPV_INCLUDE_DIR)
 		message(FATAL_ERROR "libmpv headers were not found. Set MPV_INCLUDE_DIR or OFS_MPV_ROOT.")
@@ -250,11 +249,8 @@ elseif(APPLE)
 		HINTS
 			"${OFS_MPV_ROOT}/lib"
 			"${OFS_MPV_ROOT}/opt/mpv/lib"
-			"/opt/homebrew/lib"
-			"/opt/homebrew/opt/mpv/lib"
-			"/usr/local/lib"
-			"/usr/local/opt/mpv/lib"
 		PATH_SUFFIXES lib
+		NO_DEFAULT_PATH
 	)
 	if (MPV_LIBRARY)
 		message(STATUS "Found libmpv at ${MPV_LIBRARY}")
@@ -263,9 +259,11 @@ elseif(APPLE)
 		# this value as the seed for the optional app-bundle dependency graph.
 		set(OFS_MPV_LIBRARY "${MPV_LIBRARY}" CACHE INTERNAL
 			"Discovered macOS libmpv dylib used for optional app bundling" FORCE)
-		target_compile_definitions(${PROJECT_NAME} PUBLIC
-			"OFS_MPV_LIBRARY_PATH=\"${MPV_LIBRARY}\""
-		)
+		if(NOT OFS_BUNDLE_MACOS_LIBMPV)
+			target_compile_definitions(${PROJECT_NAME} PUBLIC
+				"OFS_MPV_LIBRARY_PATH=\"${MPV_LIBRARY}\""
+			)
+		endif()
 	else()
 		message(STATUS "libmpv dylib not found at configure time; runtime fallback paths will be tried")
 		set(OFS_MPV_LIBRARY "" CACHE INTERNAL

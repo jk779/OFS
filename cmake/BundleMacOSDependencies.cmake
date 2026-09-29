@@ -16,6 +16,13 @@ foreach(_required_var OFS_APP_EXECUTABLE)
 		message(FATAL_ERROR "${_required_var} is required")
 	endif()
 endforeach()
+if(NOT DEFINED OFS_MACOS_DEPLOYMENT_TARGET OR
+	"${OFS_MACOS_DEPLOYMENT_TARGET}" STREQUAL "")
+	message(FATAL_ERROR
+		"OFS_MACOS_DEPLOYMENT_TARGET is required to validate the app bundle")
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/VerifyMacOSDeploymentTarget.cmake")
 
 if(OFS_BUNDLE_ENABLED AND (NOT DEFINED OFS_MPV_LIBRARY
 	OR "${OFS_MPV_LIBRARY}" STREQUAL ""))
@@ -32,6 +39,7 @@ endif()
 
 find_program(OFS_OTOOL otool REQUIRED)
 find_program(OFS_INSTALL_NAME_TOOL install_name_tool REQUIRED)
+include("${CMAKE_CURRENT_LIST_DIR}/MacOSDependencyGraph.cmake")
 if(OFS_ADHOC_SIGN)
 	find_program(OFS_CODESIGN codesign REQUIRED)
 else()
@@ -58,6 +66,12 @@ get_filename_component(OFS_APP_BUNDLE "${OFS_APP_CONTENTS_DIR}" DIRECTORY)
 set(OFS_FRAMEWORKS_DIR "${OFS_APP_CONTENTS_DIR}/Frameworks")
 set(OFS_HELPERS_DIR "${OFS_APP_CONTENTS_DIR}/Helpers")
 set(OFS_FFMPEG_HELPER "${OFS_HELPERS_DIR}/ffmpeg")
+
+find_program(OFS_PLISTBUDDY_EXECUTABLE PlistBuddy
+	PATHS /usr/libexec NO_DEFAULT_PATH)
+if(NOT OFS_PLISTBUDDY_EXECUTABLE)
+	message(FATAL_ERROR "macOS PlistBuddy is required to set bundle minimum version metadata")
+endif()
 
 if(NOT IS_DIRECTORY "${OFS_APP_BUNDLE}")
 	message(FATAL_ERROR "App bundle directory does not exist: ${OFS_APP_BUNDLE}")
@@ -111,113 +125,6 @@ function(ofs_add_bundle_file source requested_name output_name)
 	set(${output_name} "${requested_name}" PARENT_SCOPE)
 endfunction()
 
-function(ofs_read_dependencies binary output)
-	execute_process(
-		COMMAND "${OFS_OTOOL}" -L "${binary}"
-		RESULT_VARIABLE result
-		OUTPUT_VARIABLE listing
-		ERROR_VARIABLE error_output)
-	if(NOT result EQUAL 0)
-		message(FATAL_ERROR "otool -L failed for ${binary}: ${error_output}")
-	endif()
-
-	set(dependencies "")
-	string(REPLACE "\n" ";" lines "${listing}")
-	foreach(line IN LISTS lines)
-		string(STRIP "${line}" line)
-		if(line MATCHES "^([^ \t]+) \\(")
-			list(APPEND dependencies "${CMAKE_MATCH_1}")
-		endif()
-	endforeach()
-	set(${output} "${dependencies}" PARENT_SCOPE)
-endfunction()
-
-function(ofs_read_rpaths binary output)
-	execute_process(
-		COMMAND "${OFS_OTOOL}" -l "${binary}"
-		RESULT_VARIABLE result
-		OUTPUT_VARIABLE listing
-		ERROR_VARIABLE error_output)
-	if(NOT result EQUAL 0)
-		message(FATAL_ERROR "otool -l failed for ${binary}: ${error_output}")
-	endif()
-
-	set(rpaths "")
-	string(REPLACE "\n" ";" lines "${listing}")
-	foreach(line IN LISTS lines)
-		string(STRIP "${line}" line)
-		if(line MATCHES "^path ([^ \t]+) \\(offset")
-			list(APPEND rpaths "${CMAKE_MATCH_1}")
-		endif()
-	endforeach()
-	set(${output} "${rpaths}" PARENT_SCOPE)
-endfunction()
-
-function(ofs_is_system_path path output)
-	if(path MATCHES "^/System/Library/"
-		OR path MATCHES "^/usr/lib/"
-		OR path MATCHES "^/usr/lib/swift/"
-		OR path MATCHES "^/System/iOSSupport/")
-		set(result TRUE)
-	else()
-		set(result FALSE)
-	endif()
-	set(${output} "${result}" PARENT_SCOPE)
-endfunction()
-
-function(ofs_expand_loader_tokens path owner_dir executable_dir output)
-	set(expanded "${path}")
-	if(expanded MATCHES "^@loader_path(.*)$")
-		set(expanded "${owner_dir}${CMAKE_MATCH_1}")
-	elseif(expanded MATCHES "^@executable_path(.*)$")
-		set(expanded "${executable_dir}${CMAKE_MATCH_1}")
-	endif()
-	set(${output} "${expanded}" PARENT_SCOPE)
-endfunction()
-
-function(ofs_resolve_dependency dependency owner output)
-	if(ARGC GREATER 3)
-		set(executable_dir "${ARGV3}")
-	else()
-		set(executable_dir "${OFS_APP_MACOS_DIR}")
-	endif()
-	get_filename_component(owner_dir "${owner}" DIRECTORY)
-	ofs_read_rpaths("${owner}" owner_rpaths)
-	set(candidates "")
-
-	if(dependency MATCHES "^@rpath/(.*)$")
-		set(rpath_suffix "${CMAKE_MATCH_1}")
-		foreach(rpath IN LISTS owner_rpaths)
-			ofs_expand_loader_tokens("${rpath}" "${owner_dir}" "${executable_dir}" expanded_rpath)
-			list(APPEND candidates "${expanded_rpath}/${rpath_suffix}")
-		endforeach()
-	elseif(dependency MATCHES "^@loader_path(/.*)$")
-		list(APPEND candidates "${owner_dir}${CMAKE_MATCH_1}")
-	elseif(dependency MATCHES "^@executable_path(/.*)$")
-		list(APPEND candidates "${executable_dir}${CMAKE_MATCH_1}")
-	elseif(IS_ABSOLUTE "${dependency}")
-		list(APPEND candidates "${dependency}")
-	else()
-		list(APPEND candidates "${owner_dir}/${dependency}")
-		foreach(rpath IN LISTS owner_rpaths)
-			ofs_expand_loader_tokens("${rpath}" "${owner_dir}" "${executable_dir}" expanded_rpath)
-			list(APPEND candidates "${expanded_rpath}/${dependency}")
-		endforeach()
-	endif()
-
-	set(resolved "")
-	foreach(candidate IN LISTS candidates)
-		if(EXISTS "${candidate}")
-			get_filename_component(candidate_real "${candidate}" REALPATH)
-			if(EXISTS "${candidate_real}")
-				set(resolved "${candidate_real}")
-				break()
-			endif()
-		endif()
-	endforeach()
-	set(${output} "${resolved}" PARENT_SCOPE)
-endfunction()
-
 function(ofs_get_bundle_name source output)
 	get_filename_component(real_source "${source}" REALPATH)
 	get_property(sources GLOBAL PROPERTY OFS_BUNDLE_SOURCES)
@@ -255,6 +162,23 @@ function(ofs_install_name_tool binary)
 	endif()
 endfunction()
 
+function(ofs_verify_no_external_homebrew_load_references binary)
+	foreach(option IN ITEMS -L -l)
+		execute_process(
+			COMMAND "${OFS_OTOOL}" "${option}" "${binary}"
+			RESULT_VARIABLE result
+			OUTPUT_VARIABLE listing
+			ERROR_VARIABLE error_output)
+		if(NOT result EQUAL 0)
+			message(FATAL_ERROR "otool ${option} failed for ${binary}: ${error_output}")
+		endif()
+		if(listing MATCHES "/opt/homebrew/|/usr/local/")
+			message(FATAL_ERROR
+				"The bundled Mach-O still references an external Homebrew path: ${binary}")
+		endif()
+	endforeach()
+endfunction()
+
 function(ofs_remove_signature target)
 	if(NOT OFS_CODESIGN OR NOT EXISTS "${target}")
 		return()
@@ -280,6 +204,43 @@ endfunction()
 # state is restored below according to OFS_ADHOC_SIGN.
 ofs_remove_signature("${OFS_APP_EXECUTABLE}")
 ofs_remove_signature("${OFS_APP_BUNDLE}")
+
+set(OFS_APP_INFO_PLIST "${OFS_APP_CONTENTS_DIR}/Info.plist")
+execute_process(
+	COMMAND "${OFS_PLISTBUDDY_EXECUTABLE}"
+		-c "Set :LSMinimumSystemVersion ${OFS_MACOS_DEPLOYMENT_TARGET}"
+		"${OFS_APP_INFO_PLIST}"
+	RESULT_VARIABLE plist_set_result
+	OUTPUT_VARIABLE plist_set_output
+	ERROR_VARIABLE plist_set_error)
+if(NOT plist_set_result EQUAL 0)
+	execute_process(
+		COMMAND "${OFS_PLISTBUDDY_EXECUTABLE}"
+			-c "Add :LSMinimumSystemVersion string ${OFS_MACOS_DEPLOYMENT_TARGET}"
+			"${OFS_APP_INFO_PLIST}"
+		RESULT_VARIABLE plist_add_result
+		OUTPUT_VARIABLE plist_add_output
+		ERROR_VARIABLE plist_add_error)
+	if(NOT plist_add_result EQUAL 0)
+		message(FATAL_ERROR
+			"Could not set LSMinimumSystemVersion in ${OFS_APP_INFO_PLIST}: "
+			"${plist_set_error}${plist_set_output}${plist_add_error}${plist_add_output}")
+	endif()
+endif()
+execute_process(
+	COMMAND "${OFS_PLISTBUDDY_EXECUTABLE}"
+		-c "Print :LSMinimumSystemVersion"
+		"${OFS_APP_INFO_PLIST}"
+	RESULT_VARIABLE plist_read_result
+	OUTPUT_VARIABLE plist_minimum_version
+	ERROR_VARIABLE plist_read_error
+	OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT plist_read_result EQUAL 0 OR
+	NOT plist_minimum_version STREQUAL "${OFS_MACOS_DEPLOYMENT_TARGET}")
+	message(FATAL_ERROR
+		"${OFS_APP_INFO_PLIST} must declare LSMinimumSystemVersion="
+		"${OFS_MACOS_DEPLOYMENT_TARGET}: ${plist_read_error}${plist_minimum_version}")
+endif()
 
 if(NOT OFS_BUNDLE_ENABLED)
 	# The output bundle is shared between CMake configurations. Explicitly
@@ -553,6 +514,29 @@ endif()
 if(app_install_arguments)
 	ofs_install_name_tool("${OFS_APP_EXECUTABLE}" ${app_install_arguments})
 endif()
+
+# The final app must load only its bundled Homebrew dependencies, never a
+# build-host installation that could be a newer macOS bottle.
+ofs_verify_no_external_homebrew_load_references("${OFS_APP_EXECUTABLE}")
+ofs_verify_no_external_homebrew_load_references("${OFS_FFMPEG_HELPER}")
+foreach(source_index RANGE 0 ${last_source_index})
+	list(GET names ${source_index} bundle_name)
+	ofs_verify_no_external_homebrew_load_references(
+		"${OFS_FRAMEWORKS_DIR}/${bundle_name}")
+endforeach()
+
+# Check the app and every copied dependency after load-path rewriting and
+# before either ad-hoc or Developer ID signing takes place.
+ofs_verify_macos_binary_deployment_target(
+	"${OFS_APP_EXECUTABLE}" "${OFS_MACOS_DEPLOYMENT_TARGET}")
+ofs_verify_macos_binary_deployment_target(
+	"${OFS_FFMPEG_HELPER}" "${OFS_MACOS_DEPLOYMENT_TARGET}")
+foreach(source_index RANGE 0 ${last_source_index})
+	list(GET names ${source_index} bundle_name)
+	set(bundled_dylib "${OFS_FRAMEWORKS_DIR}/${bundle_name}")
+	ofs_verify_macos_binary_deployment_target(
+		"${bundled_dylib}" "${OFS_MACOS_DEPLOYMENT_TARGET}")
+endforeach()
 
 if(OFS_ADHOC_SIGN)
 	foreach(source_index RANGE 0 ${last_source_index})
